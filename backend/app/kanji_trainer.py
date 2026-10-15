@@ -253,7 +253,10 @@ async def _call_tool(url: str, name: str, arguments: dict[str, Any]) -> Any:
                     async with ClientSession(read_stream, write_stream) as session:
                         await session.initialize()
                         result = await session.call_tool(name, arguments)
-    except KanjiTrainerUnavailable:
+    except (KanjiTrainerUnavailable, asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        # Cancellation (a closed request, shutdown) must stay cancellation;
+        # turning it into an ordinary error would let the caller carry on.
+        # Our own overall timeout arrives as TimeoutError, not here.
         raise
     except BaseException as exc:  # noqa: BLE001 - every transport failure lands here
         raise KanjiTrainerUnavailable(_unavailable_message(url, exc)) from exc
