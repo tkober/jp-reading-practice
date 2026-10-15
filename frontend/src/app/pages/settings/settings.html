@@ -52,7 +52,7 @@
           </div>
 
           @if (modelListNote(); as note) {
-            <sumi-banner tone="info">
+            <sumi-banner class="model-note" tone="info">
               {{ note }} Only the known models are offered — a different one can be entered via
               "Other model…".
             </sumi-banner>
@@ -107,8 +107,8 @@
         <sumi-card>
           <h2 sumiCardHeader>Kanji Trainer</h2>
           <p class="hint">
-            Where the known-vocabulary source lives, once the MCP client reads it. The MCP
-            endpoint from Kanji Trainer's own deployment, e.g. <code>http://localhost:8086/mcp</code>.
+            Texts are tailored to the kanji and words you already know in the Kanji Trainer. Enter
+            its MCP endpoint, e.g. <code>http://192.168.2.230:8086/mcp</code>.
           </p>
 
           <label class="field">
@@ -139,18 +139,26 @@
             @if (status.reachable) {
               <sumi-banner tone="success">{{ kanjiTrainerSummary(status) }}</sumi-banner>
             } @else {
-              <sumi-banner tone="error">{{ status.error || 'Kanji Trainer is not reachable.' }}</sumi-banner>
+              <sumi-banner tone="error">{{
+                status.error || 'Kanji Trainer is not reachable.'
+              }}</sumi-banner>
             }
           }
           @if (kanjiTrainerMessage(); as message) {
-            <sumi-banner [tone]="kanjiTrainerUnavailable() ? 'info' : 'error'">{{ message }}</sumi-banner>
+            <sumi-banner [tone]="kanjiTrainerUnavailable() ? 'info' : 'error'">{{
+              message
+            }}</sumi-banner>
           }
         </sumi-card>
 
         <sumi-card>
           <h2 sumiCardHeader>Features</h2>
 
-          <sumi-toggle [ngModel]="webSearchEnabled()" (ngModelChange)="setWebSearch($event)" name="webSearch">
+          <sumi-toggle
+            [ngModel]="webSearchEnabled()"
+            (ngModelChange)="setWebSearch($event)"
+            name="webSearch"
+          >
             Allow web search during generation
           </sumi-toggle>
           <p class="field-hint">

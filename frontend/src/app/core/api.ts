@@ -2,12 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-import type {
-  KanjiTrainerStatus,
-  ModelCatalog,
-  Settings,
-  SettingsPatch,
-} from './api.types';
+import type { KanjiTrainerStatus, ModelCatalog, Settings, SettingsPatch } from './api.types';
 
 /**
  * What every call below rethrows as, carrying the original HTTP status

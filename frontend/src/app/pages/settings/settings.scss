@@ -55,6 +55,12 @@ h2 {
   line-height: 1.5;
 }
 
+/* The banner sits between the key and the model fields, which only carry a
+   bottom margin of their own. */
+.model-note {
+  margin-bottom: 18px;
+}
+
 /* The free-text escape hatch, shown under its dropdown. */
 .custom-model {
   margin-top: 8px;
