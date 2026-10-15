@@ -34,10 +34,10 @@ async def test_status_reports_reachable_with_counts(client: AsyncClient) -> None
             "reachable": True,
             "url": url,
             "level": 12,
-            # Sum of the jlpt breakdown's `known` counts (is_known-based),
-            # not the raw per-state `counts.known` -- see `JlptLevelCounts`.
-            "known_kanji": 100,
-            "known_vocabulary": 310,
+            # Lengths of the known lists (the fake serves one item each),
+            # not the summary's per-state or JLPT counts.
+            "known_kanji": 1,
+            "known_vocabulary": 1,
             "error": None,
         }
 
@@ -72,9 +72,14 @@ async def test_status_bypasses_but_refreshes_the_cache(client: AsyncClient) -> N
         assert state.calls["get_learning_summary"] == 2
 
         # ...but a plain call right after is a cache hit again, served from
-        # what the status endpoint's fresh call just refreshed.
+        # what the status endpoint's fresh call just refreshed -- the known
+        # lists included, which generation reads next.
         await kt.get_learning_summary(url)
+        await kt.get_known_kanji(url)
+        await kt.get_known_vocabulary(url)
         assert state.calls["get_learning_summary"] == 2
+        assert state.calls["get_known_kanji"] == 1
+        assert state.calls["get_known_vocabulary"] == 1
 
 
 async def test_changing_the_url_clears_the_cache(client: AsyncClient) -> None:

@@ -26,21 +26,20 @@ async def read_status(session: AsyncSession = Depends(get_session)) -> KanjiTrai
 
     try:
         summary = await kanji_trainer.get_learning_summary(url, fresh=True)
+        # Counted from the full lists, not from the summary: its `counts` hold
+        # the literal `known` state only (no Guru threshold), and its `jlpt`
+        # breakdown only covers subjects the JLPT snapshot lists. The lists
+        # apply `is_known` to everything, and generation needs them anyway,
+        # so this fresh fetch also warms the cache for the next text.
+        known_kanji = await kanji_trainer.get_known_kanji(url, fresh=True)
+        known_vocabulary = await kanji_trainer.get_known_vocabulary(url, fresh=True)
     except kanji_trainer.KanjiTrainerUnavailable as exc:
         return KanjiTrainerStatus(reachable=False, url=url, error=str(exc))
-
-    # The only "known" counts `get_learning_summary` carries that apply
-    # `is_known`'s threshold rather than just the literal `known` state --
-    # see `JlptLevelCounts` -- so this is what "one call, not the full
-    # lists" (the brief) has to work with. It is scoped to subjects with an
-    # assigned JLPT level, same as the `jlpt` breakdown itself.
-    known_kanji = sum(level.kanji.known for level in summary.jlpt.values())
-    known_vocabulary = sum(level.vocabulary.known for level in summary.jlpt.values())
 
     return KanjiTrainerStatus(
         reachable=True,
         url=url,
         level=summary.current_level,
-        known_kanji=known_kanji,
-        known_vocabulary=known_vocabulary,
+        known_kanji=len(known_kanji),
+        known_vocabulary=len(known_vocabulary),
     )

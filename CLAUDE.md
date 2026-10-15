@@ -138,9 +138,10 @@ screen's "Test connection" button: always HTTP 200 (it reports the
 connection's state, it is not itself failing), bypassing the client's cache
 with a `fresh` call so the button always tests the live connection, but still
 refreshing the cache with whatever it got. `known_kanji`/`known_vocabulary`
-are the sum of `get_learning_summary`'s JLPT breakdown's `known` counts (the
-only place that summary applies `is_known`'s threshold rather than the raw
-`known` state) -- one call, not the full lists.
+are the lengths of the full known lists, not anything from the summary: its
+per-state `counts` ignore the Guru threshold, and its JLPT breakdown only
+covers subjects the JLPT snapshot lists. Fetching the lists also warms the
+cache that text generation reads next.
 
 ## Known gaps
 
