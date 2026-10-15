@@ -1,0 +1,97 @@
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sumi-muted);
+}
+
+.hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--sumi-muted);
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.field {
+  display: block;
+  margin-bottom: 18px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.field-hint {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--sumi-muted);
+  line-height: 1.5;
+}
+
+/* The free-text escape hatch, shown under its dropdown. */
+.custom-model {
+  margin-top: 8px;
+}
+
+.secret {
+  margin-bottom: 20px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  .field {
+    margin-bottom: 0;
+  }
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  position: sticky;
+  bottom: 0;
+  padding: 14px 0;
+  background: linear-gradient(180deg, transparent, var(--sumi-bg) 40%);
+}
+
+.save-message {
+  font-size: 13px;
+  color: var(--sumi-text-2);
+
+  &.ok {
+    color: var(--sumi-correct);
+  }
+
+  &.fail {
+    color: var(--sumi-wrong);
+  }
+}
