@@ -202,11 +202,70 @@ Nav: Read · History · Stats · Topics · Settings (`app.ts`'s `nav`), routes
 (`app.routes.ts`). `sumi-app-shell` collapses this into a bottom tab bar on
 its own below 720px -- nothing in this app's own code handles that.
 
+## Deployment
+
+Two GHCR images, built by GitHub Actions on push to `main`:
+`ghcr.io/tkober/jp-reading-practice-backend` and `-frontend`. The workflows
+also build (without pushing) on `pull_request` -- there is no Docker in the
+dev environment this repository is usually worked on from, so this is what
+catches a broken Dockerfile before it reaches `main`. Only the frontend
+publishes a port, so no CORS is involved and the backend port stays
+unpublished; the backend's `/api/health` is its container healthcheck, and
+the frontend's `depends_on` waits for it to report healthy before starting.
+
+Ports already taken on the target host: 2222, 3141, 5432, 5678, 5900, 8000,
+8001, 8080-8087, 8765, 18789. Hence **8088**.
+
+Database bootstrap is manual, like the other projects: `dbeaver/` holds the
+SQL to create the roles and database, run by hand against `postgres-core`
+with the `${...}` password placeholders substituted; its two statements reuse
+exactly what `dev/initdb/01-roles.sql` does locally. `dbeaver/verify.sql`
+exists because the failure mode is silent -- Postgres answers a missing role
+with the same `28P01` it uses for a wrong password, so "authentication
+failed" does not tell you which of the two happened.
+
+The stack directory (`deploy/jp_reading_practice/`) is meant to be copied
+into the `compose-stacks-unraid` repository. `compose.yaml` at the repo root
+is the local mirror of it, down to creating both Postgres roles via
+`dev/initdb`.
+
+**`index.html` must never be cached, the hashed assets always.** nginx serves
+the shell with `Cache-Control: no-cache` and everything with a content hash
+in its name as `immutable` for a year. Without the first, a browser reuses
+the old shell after a redeploy and stays pinned to the previous bundle --
+with no symptom except that the new code is simply not there, which costs an
+hour to diagnose because the server is serving the right files the whole
+time. `sumi-fonts.css` keeps the same name across builds (it is not part of
+the hashed bundle), so it gets its own `no-cache` rule rather than falling
+into either bucket; the manifest and its icons are revalidated short-lived
+instead, since their names are stable too but redesigning one should not pin
+the old version in every browser that has seen it for a year.
+
+**`/api/` gets a 180s `proxy_read_timeout`, not kanji-trainer's 120s.** Text
+generation calls an LLM synchronously, inside the request -- there is no
+background task to poll the way kanji-trainer's WaniKani import works, so
+the one request genuinely can take a while and nginx must not cut it off
+mid-completion.
+
+**Installing it as a PWA needs TLS.** Service workers are `[SecureContext]`,
+so over plain HTTP to a LAN address (`http://<host>:8088/`) one cannot
+register. The app works normally in a browser there; "installed on the
+phone, offline" needs a reverse proxy with a certificate in front. Nothing in
+the code assumes either way.
+
+**This backend depends on Kanji Trainer's `MCP_ALLOWED_HOSTS`.** It calls
+Kanji Trainer's read-only MCP server at `KANJI_TRAINER_MCP_URL`
+(`http://192.168.2.230:8086/mcp` in the deployment); that server's own
+DNS-rebinding check rejects any request whose Host header is not in its
+`MCP_ALLOWED_HOSTS` allowlist, so the Kanji Trainer deployment's env must
+list `192.168.2.230:8086` there (see `deploy/jp_reading_practice/env/
+jp-reading-practice-backend/.env.example`) or every call here gets back an
+HTTP 421.
+
 ## Known gaps
 
 - No domain tables yet -- `app_settings` is the only table. Reading texts,
   progress and statistics arrive with their own issues, and Read, History,
   Stats and Topics are placeholder pages until then.
-- No Docker/deploy/CI (#4).
 - No authentication. Single user, LAN only -- the same assumption the other
   stacks make.
