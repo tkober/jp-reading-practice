@@ -1,0 +1,7 @@
+/* Global styles entry point. Everything comes from Sumi UI's own tokens and
+   base styles (see sumi-ui's README, "Using Sumi UI in an app") -- this
+   skeleton has no app-specific tokens or highlight classes of its own yet,
+   unlike kanji-trainer's styles/app-tokens.scss (WaniKani's item-type
+   colours). Add one here if a later issue needs a colour or a utility class
+   Sumi UI does not provide. */
+@use 'sumi-ui/projects/sumi-ui/styles/sumi';
