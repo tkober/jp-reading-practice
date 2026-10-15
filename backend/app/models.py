@@ -43,3 +43,22 @@ class SettingsOut(BaseModel):
     openai_api_key_set: bool
     openai_api_key_hint: str | None = None
     openai_api_key_from_env: bool
+
+
+# --- Kanji Trainer MCP ---------------------------------------------------
+
+
+class KanjiTrainerStatus(BaseModel):
+    """What the Settings screen's "Test connection" button shows.
+
+    Always HTTP 200 -- this reports the connection's state, it is not itself
+    failing when kanji-trainer is unreachable. `level`/`known_kanji`/
+    `known_vocabulary` are `None` exactly when `reachable` is `False`.
+    """
+
+    reachable: bool
+    url: str
+    level: int | None = None
+    known_kanji: int | None = None
+    known_vocabulary: int | None = None
+    error: str | None = None
