@@ -11,10 +11,10 @@ level, using what the other apps in the suite -- chiefly
 about their vocabulary. See `REQUIREMENTS.md` for the full concept (epic #1)
 and the open questions that are not decided yet.
 
-This repository currently holds only the backend skeleton (issue #2): no
-domain logic, no frontend, no deployment. Everything below describes what
-actually exists; do not take it as a preview of what #3/#4 and later issues
-will add.
+This repository currently holds the backend skeleton (issue #2) and the
+Angular frontend skeleton (issue #3): no domain logic, no deployment.
+Everything below describes what actually exists; do not take it as a preview
+of what #4 and later issues will add.
 
 ## Language convention
 
@@ -49,7 +49,20 @@ uv run alembic revision --autogenerate -m "..."   # after changing a model in db
 uv run alembic upgrade head                       # apply migrations by hand, outside init_db
 ```
 
-There is no frontend yet (issue #3).
+```bash
+cd frontend
+npm ci                      # install, incl. the sumi-ui submodule's peer deps
+npm start                    # ng serve on :4200, proxies /api to :8000
+npx ng build                 # production build -- the correctness gate (type-checks templates)
+```
+
+```bash
+./dev.sh                     # backend + frontend together; needs backend/.env
+BACKEND_PORT=8010 FRONTEND_PORT=4210 ./dev.sh   # overridable for parallel sessions
+```
+
+The frontend has no spec files, so `ng test` finds nothing yet -- `ng build`
+is the correctness gate, same as the other apps in the suite.
 
 ## Persistence
 
@@ -143,10 +156,57 @@ per-state `counts` ignore the Guru threshold, and its JLPT breakdown only
 covers subjects the JLPT snapshot lists. Fetching the lists also warms the
 cache that text generation reads next.
 
+## Frontend
+
+Angular 22, zoneless, signals -- same stack as kanji-trainer and the other
+apps in the suite, see that repo's CLAUDE.md for the general shape this one
+copies (`core/api.ts`'s `rethrow()`, `core/unreachable.ts`'s
+`isBackendUnreachable()` for the T6 error state). `frontend/src/app/pages/
+{read,history,stats,topics}` are placeholder pages (`sumi-page` +
+`sumi-empty-state`) until their own issues give them something real to show;
+`pages/settings` is the one real screen so far, built against the backend's
+existing `GET/PUT /api/settings` and `GET /api/settings/models`.
+
+`core/api.ts`'s `kanjiTrainerStatus()` calls `GET /api/kanji-trainer/status`
+(see "Kanji Trainer (MCP)" above) for the Settings screen's "Test
+connection" button. A 404 there is not "the backend is unreachable" (see
+`core/unreachable.ts`'s doc comment) -- it means a backend older than issue
+#5, and `KanjiTrainerStatusUnavailable` is the dedicated error type the
+Settings screen checks for, to say so instead of showing a generic failure.
+
+## Sumi UI
+
+`frontend/sumi-ui` is a git submodule (`tkober/sumi-ui`, shared with the
+other apps in the suite) -- clone this repo with `git clone
+--recurse-submodules`, or run `git submodule update --init` in an existing
+checkout; **never `npm install` inside it**, it compiles against this app's
+own `node_modules`. Wired in per sumi-ui's README ("Using Sumi UI in an
+app"): `tsconfig.json`'s `paths` resolves `sumi-ui/*` straight to the
+submodule's TypeScript sources (no separate library build),
+`angular.json`'s `stylePreprocessorOptions.includePaths` is the Sass load
+path `styles.scss` needs for `@use 'sumi-ui/projects/sumi-ui/styles/sumi'`,
+and the library's `@font-face` rules ship as their own non-injected
+`sumi-fonts.css` bundle, linked separately in `index.html`.
+
+`provideSumi({ accent: 'tokiwa', motif: 'moon', pattern: 'sayagata',
+companion: 'fukurou' })` in `app.config.ts` -- all four are **placeholders**
+until the real design lands in tkober/sumi-ui#25, with one asterisk:
+`accent: 'tokiwa'` (tokiwa-iro, `#007b43`) is a preset sumi-ui added
+specifically for this app (tkober/sumi-ui#82), so it is a considered choice
+already, just not yet confirmed as final the way #25 will settle it. Update
+the inline SVG favicon in `index.html` by hand if the accent ever changes --
+it is not derived from `provideSumi()`.
+
+Nav: Read · History · Stats · Topics · Settings (`app.ts`'s `nav`), routes
+`/read` (default), `/history`, `/stats`, `/topics`, `/settings`
+(`app.routes.ts`). `sumi-app-shell` collapses this into a bottom tab bar on
+its own below 720px -- nothing in this app's own code handles that.
+
 ## Known gaps
 
 - No domain tables yet -- `app_settings` is the only table. Reading texts,
-  progress and statistics arrive with their own issues.
-- No frontend (#3), no Docker/deploy/CI (#4).
+  progress and statistics arrive with their own issues, and Read, History,
+  Stats and Topics are placeholder pages until then.
+- No Docker/deploy/CI (#4).
 - No authentication. Single user, LAN only -- the same assumption the other
   stacks make.

@@ -132,7 +132,7 @@ SLOTS: tuple[ModelSlot, ...] = (
     ModelSlot(
         key="help",
         label="Reading help",
-        hint="Answers questions about a text already on screen -- translate, explain, grammar.",
+        hint="Answers questions about a text already on screen: translate, explain, grammar.",
         curated=(
             CuratedModel("gpt-4o", "gpt-4o", "Default. Writes usable explanations."),
             CuratedModel("gpt-5", "gpt-5", "Stronger at grammar explanations."),
