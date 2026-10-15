@@ -105,12 +105,47 @@ HTTP tests use `httpx.ASGITransport` rather than `TestClient`: the latter runs
 the app on its own event loop in a worker thread, which the shared SQLAlchemy
 engine cannot be used from.
 
+## Kanji Trainer (MCP)
+
+`app/kanji_trainer.py` (issue #5) is the client for kanji-trainer's own
+read-only MCP server at `/mcp` (Streamable HTTP, stateless, JSON responses --
+see its `app/mcp_server.py` and CLAUDE.md "MCP server" section). One function
+per tool (`get_known_kanji`, `get_known_vocabulary`, `get_learning_summary`,
+`lookup_items`, `get_jlpt_levels`), returning Pydantic models that mirror the
+server's own -- there is no shared package between the two repos, so keep
+them in sync by hand when that server's shapes change. Built on the `mcp`
+SDK's `ClientSession` + `mcp.client.streamable_http`, pinned `mcp>=1.30,<2`
+like the server (2.x renamed the API). A fresh connection per call, since the
+server is stateless and reused across many short-lived requests -- nothing
+here is worth keeping a persistent session open for.
+
+Every failure -- unreachable, a 421 (kanji-trainer's own `MCP_ALLOWED_HOSTS`
+rejecting this host), a tool-side error, a timeout -- becomes one
+`KanjiTrainerUnavailable` with an English, human-readable message. Nothing in
+this module decides how to degrade; that is left to the caller.
+
+Caching is in-process: `get_known_kanji`/`get_known_vocabulary`/
+`get_learning_summary` for 15 minutes, keyed by URL (and `min_srs_stage`
+where it applies); `lookup_items`/`get_jlpt_levels` per string instead, in a
+bounded LRU, since a generated text's distinct tokens never expire on their
+own. `get_jlpt_levels` batches transparently over the server's own 2000-item
+cap. `clear_cache()` drops all of it -- called from `PUT /api/settings`
+whenever `kanji_trainer_mcp_url` changes, since a cache entry is keyed by the
+old URL and would otherwise linger.
+
+`GET /api/kanji-trainer/status` (`app/api/kanji_trainer.py`) is the Settings
+screen's "Test connection" button: always HTTP 200 (it reports the
+connection's state, it is not itself failing), bypassing the client's cache
+with a `fresh` call so the button always tests the live connection, but still
+refreshing the cache with whatever it got. `known_kanji`/`known_vocabulary`
+are the sum of `get_learning_summary`'s JLPT breakdown's `known` counts (the
+only place that summary applies `is_known`'s threshold rather than the raw
+`known` state) -- one call, not the full lists.
+
 ## Known gaps
 
 - No domain tables yet -- `app_settings` is the only table. Reading texts,
   progress and statistics arrive with their own issues.
 - No frontend (#3), no Docker/deploy/CI (#4).
-- No MCP client yet; `kanji_trainer_mcp_url` is configuration without a
-  consumer so far.
 - No authentication. Single user, LAN only -- the same assumption the other
   stacks make.

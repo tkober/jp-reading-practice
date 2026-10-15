@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import kanji_trainer
 from ..config import get_settings
 from ..db import SETTINGS_ROW_ID, AppSettings, get_session, load_settings
 from ..model_catalog import ModelCatalog, is_valid_model_id
@@ -104,6 +105,13 @@ async def write_settings(
             update(AppSettings).where(AppSettings.id == SETTINGS_ROW_ID).values(**values)
         )
         await session.commit()
+
+    if "kanji_trainer_mcp_url" in values:
+        # The MCP client's cache is keyed by URL -- clear it so a changed
+        # URL (or a cleared override falling back to the environment one)
+        # is reflected right away instead of waiting out the old entries'
+        # TTL, or, for lookup_items/get_jlpt_levels, forever.
+        kanji_trainer.clear_cache()
 
     return await _current(session)
 
