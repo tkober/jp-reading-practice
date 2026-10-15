@@ -66,7 +66,7 @@ class Settings(BaseSettings):
         """Build an async SQLAlchemy URL for one role from the base DB_URL."""
         url = make_url(self.db_url)
         return url.set(
-            drivername="postgresql+psycopg",
+            drivername="postgresql+asyncpg",
             username=user or None,
             password=password or None,
         )

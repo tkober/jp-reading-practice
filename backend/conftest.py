@@ -24,8 +24,10 @@ import pytest
 import pytest_asyncio
 
 DB_NAME = "jp_reading_practice_test"
-OWNER = "jp_reading_practice_owner"
-APP = "jp_reading_practice_app"
+# Own role names, never the app's: a local Postgres usually also holds the
+# dev database, whose roles the teardown below must not touch.
+OWNER = "jp_reading_practice_test_owner"
+APP = "jp_reading_practice_test_app"
 PASSWORD = "testing"
 
 

@@ -98,6 +98,9 @@ stray DDL statement in a request path fails there rather than at deploy time.
 Without Docker, `TEST_DB_URL` points `conftest.py` at a local superuser
 connection instead of testcontainers; either way it creates and drops the
 roles and the database itself, exactly like the deployment bootstrap would.
+The test roles are named `jp_reading_practice_test_*`, never the app's own:
+the local Postgres usually holds the dev database too, and the teardown drops
+the roles it created.
 HTTP tests use `httpx.ASGITransport` rather than `TestClient`: the latter runs
 the app on its own event loop in a worker thread, which the shared SQLAlchemy
 engine cannot be used from.

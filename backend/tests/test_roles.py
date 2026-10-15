@@ -18,7 +18,7 @@ from app.config import get_settings
 
 def _plain_dsn(url: URL) -> str:
     """A bare ``postgresql://`` DSN psycopg's sync driver accepts directly --
-    the app's own URLs carry the ``+psycopg`` SQLAlchemy dialect suffix."""
+    the app's own URLs carry the ``+asyncpg`` SQLAlchemy dialect suffix."""
     return url.set(drivername="postgresql").render_as_string(hide_password=False)
 
 

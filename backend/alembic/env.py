@@ -9,7 +9,7 @@ Two callers, two ways of getting a connection:
   one.
 * the CLI (`uv run alembic revision --autogenerate`, `uv run alembic upgrade
   head`) -- nothing is passed in, so this builds its own engine from the
-  owner URL. The app's URL is async (psycopg 3's async mode); Alembic's
+  owner URL. The app's URL is async (asyncpg); Alembic's
   migration runner is synchronous, so the engine is async but every access
   goes through `AsyncConnection.run_sync`, exactly like `init_db` itself does.
 
