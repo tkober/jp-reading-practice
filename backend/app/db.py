@@ -270,8 +270,9 @@ class HelpEvent(Base):
     is the "counted once per target per session" rule from the concept, not
     a second thing the code has to decide.
 
-    `target` is what is actually deduped on: the lemma for a word-kind help
-    (`reading_peek`, `word_lookup`, `explain`), the sentence key
+    `target` is what is actually deduped on: the lemma for `reading_peek`/
+    `word_lookup`, `"<sentence key>:<lemma>"` for `explain` (it explains the
+    word in its sentence), the sentence key
     (`sentences.Sentence.key`, `"<paragraph>-<sentence>"`) for a sentence-kind
     help (`translate`, `grammar`) -- see `sentences.py` and the assist
     endpoint. `lemma`/`surface`/`token_id` still ride along unconditionally

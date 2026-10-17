@@ -243,7 +243,7 @@ async def test_explain_word_generates_and_caches(
     )
     assert cached_row is not None
     assert cached_row.kind == "explain"
-    assert cached_row.target == "水"  # the lemma, for a word kind
+    assert cached_row.target == "0-0:水"  # sentence key + lemma, for explain
     assert cached_row.answer == "水 means water."
     assert cached_row.cost_usd is not None and cached_row.cost_usd > 0
 

@@ -347,14 +347,16 @@ export class ReadSessionPage {
     this.wordActionLoading.set(kind);
     this.api.assist(session.id, { kind, token_id: tokenId }).then(
       (result) => {
-        this.wordActionLoading.set(null);
+        // A request for a word the reader has since left must not touch the
+        // current word's loading state or answer.
         if (this.selectedWordId() === tokenId) {
+          this.wordActionLoading.set(null);
           this.wordAnswer.set({ kind: result.kind, text: result.answer });
         }
       },
       (error: unknown) => {
-        this.wordActionLoading.set(null);
         if (this.selectedWordId() === tokenId) {
+          this.wordActionLoading.set(null);
           // `ApiError`'s own message already reads like a sentence (e.g.
           // "The server refused: No OpenAI API key is configured.") --
           // shown in the answer block itself, never a page-level error

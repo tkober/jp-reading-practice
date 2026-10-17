@@ -449,10 +449,11 @@ token_id}`** -> `{kind, answer, cached, counted, weight}` (`api/
 sessions.py`). Only in status `reading` (409 otherwise, same as every other
 reading-phase endpoint); `explain` only for an `is_word` token (422 on a
 particle) -- `translate`/`grammar` accept any token, since they act on its
-sentence. The *target* `HelpEvent`/`help_answers` dedupe on is the lemma
-for `explain` (a word kind, same as `reading_peek`/`word_lookup`) or the
-sentence key for `translate`/`grammar` (a sentence kind) -- see
-`db.HelpEvent`'s docstring.
+sentence. The *target* `HelpEvent`/`help_answers` dedupe on is
+`"<sentence key>:<lemma>"` for `explain` (it explains the word *in this
+sentence*, so the same lemma in another sentence is a different question)
+and the sentence key for `translate`/`grammar` -- see `db.HelpEvent`'s
+docstring.
 
 **The cache (`help_answers`)**: one row per `(text_id, kind, target)` --
 the same question about the same text is answered once *ever*, reused by
@@ -529,9 +530,9 @@ column, not a DB enum, specifically so a later kind (`tutor`, issue #11)
 can be added without a schema change. `helps.py` is the one place every
 weight lives. `target` (issue #10; backfilled from the pre-existing
 `lemma` column, which is exactly what every row before #10 deduped on) is
-the lemma for a word kind (`reading_peek`, `word_lookup`, `explain`) or
-the sentence key (`sentences.Sentence.key`) for a sentence kind
-(`translate`, `grammar`) -- see "LLM helps" above. `token_id`/`lemma`/
+the lemma for `reading_peek`/`word_lookup`, sentence key + lemma for
+`explain`, and the sentence key (`sentences.Sentence.key`) for
+`translate`/`grammar` -- see "LLM helps" above. `token_id`/`lemma`/
 `surface` ride along unconditionally (not just for word kinds) so the
 summary can always join back to the exact occurrence that triggered the
 help; `cost_usd` (issue #10) is `NULL` for a non-LLM help, `0.0` for a

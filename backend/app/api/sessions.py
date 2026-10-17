@@ -341,7 +341,10 @@ async def assist(
         )
 
     sentence = _sentence_for_token(text_row, token)
-    target = token["lemma"] if payload.kind == "explain" else sentence.key
+    # "Explain word" explains the word *in this sentence*, so its target is
+    # the word within its sentence: the same lemma elsewhere in the text is
+    # a different question with a different answer.
+    target = f"{sentence.key}:{token['lemma']}" if payload.kind == "explain" else sentence.key
 
     cached_row = await session.scalar(
         select(HelpAnswer).where(
