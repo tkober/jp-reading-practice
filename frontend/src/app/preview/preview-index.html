@@ -1,0 +1,12 @@
+<sumi-page title="Design preview" subtitle="Every screen and state from issue #6, built for dev only — never shipped in production.">
+  @for (group of groups; track group.title) {
+    <sumi-card>
+      <h2 sumiCardHeader>{{ group.title }}</h2>
+      <ul class="links">
+        @for (link of group.links; track link.path) {
+          <li><a [routerLink]="link.path">{{ link.label }}</a></li>
+        }
+      </ul>
+    </sumi-card>
+  }
+</sumi-page>

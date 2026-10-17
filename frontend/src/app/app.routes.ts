@@ -1,6 +1,25 @@
+import { isDevMode } from '@angular/core';
 import { Routes } from '@angular/router';
 
+/**
+ * `/preview` (issue #6): every screen and state built against the real
+ * components with fixture data, for the owner to approve before #8+ wire
+ * them up for real. Registered only in dev mode, per the brief -- a
+ * production build's router config never has this route, so there is no
+ * way to navigate there once deployed, even though the lazy chunk itself
+ * (unreached, like any other lazy route) still exists in `dist/`.
+ */
+const previewRoute = isDevMode()
+  ? [
+      {
+        path: 'preview',
+        loadChildren: () => import('./preview/preview.routes').then((m) => m.previewRoutes),
+      },
+    ]
+  : [];
+
 export const routes: Routes = [
+  ...previewRoute,
   { path: '', redirectTo: 'read', pathMatch: 'full' },
   {
     path: 'read',
