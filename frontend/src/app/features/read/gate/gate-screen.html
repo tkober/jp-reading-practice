@@ -9,5 +9,9 @@
   companion="fukurou"
   (start)="start.emit()"
 >
-  <sumi-segmented-bar ariaLabel="Measured JLPT mix" [segments]="jlptSegments()" [legend]="true" />
+  <!-- No JLPT levels at all (e.g. measured without the Kanji Trainer): an
+       empty bar would say nothing, so it is left out. -->
+  @if (jlptSegments().length > 0) {
+    <sumi-segmented-bar ariaLabel="Measured JLPT mix" [segments]="jlptSegments()" [legend]="true" />
+  }
 </sumi-session-gate>
