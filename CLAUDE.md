@@ -296,8 +296,9 @@ copies (`core/api.ts`'s `rethrow()`, `core/unreachable.ts`'s
 existing `GET/PUT /api/settings` and `GET /api/settings/models`.
 
 `frontend/src/app/features/read/{gate,setup,reading,questions}` are the
-approved design's screens (issue #6), built against `frontend/src/app/
-preview/` fixtures until #9+ wire them to real data -- `ng serve` and open
+approved design's screens (issue #6), still built against `frontend/src/app/
+preview/` fixtures -- issue #9 wires `pages/read/` to them with real data
+instead, see below. `ng serve` and open
 `/preview` (dev mode only, see `preview.routes.ts`'s doc comment) to click
 through every state. #21 moved every screen off its own app-local
 prototype (`proto/`, now deleted) onto the matching Sumi UI component:
@@ -308,12 +309,18 @@ it, the overlay shell itself is the library's), `sumi-side-panel` for the
 "ask about this text" chat, the extended `sumi-session-bar` for the
 reading header (elapsed/pause/chat, no "End session"), `sumi-choice-
 question` for the comprehension questions, `sumi-tile-picker` for the
-topic grid and `sumi-share-slider` for the JLPT mix. One library gap found
-along the way: `sumi-reading-text`'s `wordActivated` event carries only
-the activated word's `DOMRect`, not the element itself, which `sumi-
-popover`'s `[anchor]` input wants live (so it can re-measure on resize/
-scroll) -- `ReadingScreen.resolveAnchorElement` bridges the two via
-`document.elementFromPoint`, see its own doc comment.
+topic grid and `sumi-share-slider` for the JLPT mix. The word popover
+anchors on `wordActivated`'s `element` (sumi-ui#108), and the session bar's
+chat action takes its look from `[sumiSessionBarAction]`. Issue #9 added two
+more optional inputs so these components stay presentational while the
+word popover's action buttons (#10) and the session bar's chat action
+(#11) do not exist yet: `ReadingScreen.chatEnabled` (default `true`, so
+every existing `/preview/reading*` route is unaffected; `/read/:sessionId`
+passes `false`) and `WordDetails.actions` (now optional -- an absent/empty
+list simply renders no action buttons). `GateScreen.kanjiTrainerErrorNote`
+(also new, also optional, default `null`) follows the same pattern for the
+one banner the gate needed that the approved design did not have a slot
+for yet.
 
 `core/api.ts`'s `kanjiTrainerStatus()` calls `GET /api/kanji-trainer/status`
 (see "Kanji Trainer (MCP)" above) for the Settings screen's "Test
@@ -321,6 +328,144 @@ connection" button. A 404 there is not "the backend is unreachable" (see
 `core/unreachable.ts`'s doc comment) -- it means a backend older than issue
 #5, and `KanjiTrainerStatusUnavailable` is the dedicated error type the
 Settings screen checks for, to say so instead of showing a generic failure.
+
+### Reading sessions (issue #9)
+
+`/read` (`pages/read/read.ts`) owns everything *before* a session exists:
+setup (topics from `GET /api/topics` plus a synthetic "Surprise me" tile,
+`slug: "surprise"`), the generating state while `POST /api/texts` runs (it
+can take over a minute; nginx's `/api/` proxy allows 180s, see
+"Deployment"), the gate once it returns, and the full-screen error for a
+502/other failure (Retry re-sends the same payload, Back returns to
+setup). A 409 (no OpenAI key) does not go to the error screen -- it flips
+`hasOpenAiKey` back to `false` and returns to setup, reusing that banner
+rather than inventing a second way to say the same thing. The gate's
+"Start" is the one thing that actually creates anything stateful here:
+`POST /api/sessions {text_id}`, then `router.navigate(['/read', id])`.
+
+`/read/:sessionId` (`pages/read/read-session.ts`) owns the running session
+and picks reading/questions/summary from `GET /api/sessions/{id}`'s own
+`status` on every load (`status-routing.ts`'s `screenForStatus`, unit
+tested) -- a reload or switching apps on the phone resumes exactly where
+the reader was, active time included, since the heartbeat (below) has
+already pushed it to the server. "Read again" (from the summary) creates
+a *new* session on the same `text_id` and navigates straight into reading,
+skipping the gate; "New text" goes back to `/read`.
+
+**Overrides are opt-in, never shadowed from the preset.** `setup.types.ts`'s
+`DIFFICULTY_PRESETS` table (issue #6) now matches the backend's own
+`presets.py` numbers exactly (percent/100 instead of a fraction) so the
+setup screen's promise and the gate's measured values agree -- but
+`ReadPage` only ever sends `overrides.style`/`unknown_kanji_target`/
+`jlpt_mix` for a field the learner actually changed inside "Adjust"
+(tracked per field, reset whenever the preset itself is changed). Left
+untouched, `POST /api/texts` gets only `{topic_slug, length, preset}`, so
+the backend's own preset -- and the *topic's* own `default_style` -- apply
+exactly as `api/texts.py` already resolves them (issue #8), rather than
+this screen's own UI-friendly numbers silently overriding the topic's
+style default on every single generation.
+
+**The reading screen's tokens are mapped, not rendered directly.**
+`pages/read/token-mapping.ts`'s `mapApiParagraphsToReadingText` (pure,
+unit tested) turns the backend's full per-word `Token` analysis into
+`sumi-reading-text`'s lean `SumiReadingWord` (`{id, text, reading?,
+unknown?, plain?}`): `is_word === false` (particles, auxiliaries,
+punctuation) -> `plain`, ordinary running text that is not focusable,
+tappable or peekable (sumi-ui#112); no kanji at all -> no reading (nothing
+to peek over a kana word's own spelling); `needs_furigana` -> `reading`
+set, `unknown: true` (always-visible ruby); a kanji word that does not
+need it (known, or every kanji composes) -> `reading` set, `unknown` left
+falsy (peekable on hover/focus/long-press). The mapping also returns
+`tokensById`, which `ReadSessionPage` uses to resolve a tapped or peeked
+word back to its token.
+
+**Active time** (`pages/read/active-time-tracker.ts`'s `ActiveTimeTracker`,
+unit tested) counts only while not manually paused, the document is
+visible, and the reader is not idle (no pointer/key/scroll/touch/wheel for
+`IDLE_TIMEOUT_MS`, 60s) -- a manual pause counts into `pausedMs` instead,
+while a hidden document or an idle stretch is counted into *neither*, on
+purpose: it is lost real time, not "paused" in the session's own sense.
+The class has no timer of its own -- every method takes (or defaults to
+the injected clock's) an explicit timestamp and settles elapsed time
+against it on every call, which is what makes a single `tick()` call that
+spans the idle threshold split correctly (idle can start *mid-interval*,
+since nothing calls in to mark the exact moment) and what lets the spec
+drive it with plain incrementing numbers, no fake timers. `ReadSessionPage`
+calls `tick()` every second (for the live elapsed label) and wires
+`visibilitychange` plus pointer/key/scroll/touch/wheel listeners to
+`setVisible`/`noteActivity`; a manual pause (`sumi-session-bar`'s own pause
+button) blurs the text (existing design, unchanged) and calls
+`setPaused(true)`. The heartbeat (`PUT /api/sessions/{id}/time`, monotonic
+server-side -- never lowers a stored value) fires every 15s, on pause, and
+on `Done`; `visibilitychange` going hidden instead calls
+`Api.heartbeatKeepalive` -- a plain `fetch(..., {keepalive: true})`
+bypassing `HttpClient`, since `HttpClient` has no `keepalive` option and an
+ordinary request can be cancelled by the very backgrounding it is trying
+to report.
+
+**Word interactions.** A hover/focus/long-press peek (`sumi-reading-text`'s
+own `readingPeeked`, only ever fired for a peekable -- known, has a
+reading -- word) calls `POST /api/sessions/{id}/helps {kind:
+"reading_peek", token_id}`; `ReadSessionPage` also tracks peeked lemmas
+client-side (`peekedLemmas`) so a repeat peek of the same word never even
+reaches the network, on top of the backend's own per-session dedupe. A tap
+(`wordActivated`) on a token with `is_word` calls `POST .../lookups`,
+which both logs a `word_lookup` help and returns the dictionary/JLPT/Kanji
+Trainer details the popover shows; the popover opens immediately with a
+"Loading…" placeholder (`WordDetails`, no `actions`) and is replaced once
+the response lands, or on error if it does not. `GET /api/sessions/{id}/
+summary`'s `looked_up_words` is fed straight into `SummaryScreen`.
+
+### Backend: `reading_sessions` / `help_events` (issue #9)
+
+`reading_sessions` (`db.py`): one row per attempt at a text -- reading a
+text again (`POST /api/sessions` with the same `text_id`) always starts a
+*new* row, never reuses one. `status` walks `reading -> questions ->
+finished`, driven entirely by `api/sessions.py`; `active_ms`/`paused_ms`
+are the heartbeat's own monotonic running totals; `answers` is one entry
+per question (chosen option index, or `null`), index-aligned with the
+text's own `questions`; `comprehension_correct` is `null` until
+`finished`, then the number of questions answered correctly.
+
+`help_events`: one row per *first* occurrence of a help kind for a given
+word in a given session -- the unique constraint on `(session_id, kind,
+lemma)` is the entire dedupe (`ON CONFLICT DO NOTHING`; a repeat returns
+`counted: false`, never an error). `kind` is a plain string column, not a
+DB enum, specifically so issue #10 can add `explain`/`translate`/
+`grammar`/`tutor` without a schema change. `helps.py` is the one place
+every weight lives, including those four, unused until #10 wires them up
+(per the concept, those are counted per word per *question*, not per
+session -- #10's own job, not this module's). `token_id` rides along next
+to the dedupe key (`lemma`) so the summary's `looked_up_words` can show
+the exact occurrence's reading (`Token.lemma_reading`, see below) without
+a second join key.
+
+**`Token.lemma_reading`** (`models.py`, issue #7's `Token` gaining one more
+field) is the lemma's own reading (`RawToken.lemma_reading`, unidic's
+`kanaBase`), as opposed to `Token.reading`, the *surface's* own reading for
+ruby display. The two differ for any conjugated word (食べました's surface
+reading is たべました; its lemma's is たべる) -- the word lookup and the
+summary's looked-up-words list both need the lemma's reading (what the
+dictionary is keyed by), never the surface's. Defaults to `""` so a
+`texts` row stored before this field existed still deserialises (issue #8
+rows predate it; nothing re-analyzes them); `api/sessions.py`'s
+`_lemma_reading` falls back to the surface reading for those rows.
+
+`POST /api/sessions/{id}/lookups`'s known-status string ("Kanji Trainer:
+Guru II" / "Not in Kanji Trainer" / "Kanji Trainer unavailable") reads
+`kanji_trainer.lookup_items` and formats the result with a small, local
+copy of kanji-trainer's own WaniKani-style stage names (its `app/srs.py`'s
+`STAGE_NAMES`) -- there is no shared package between the two repos, same
+situation `kanji_trainer.py`'s own module doc comment describes for the
+rest of this client.
+
+`GET /api/reading/pace` (mounted at a different prefix than the rest of
+`api/sessions.py`'s router -- see `pace_router` in that module and its
+second `include_router` call in `api/__init__.py`) is the median chars/min
+over the last 5 finished sessions -- only each text's *first* finished read,
+since a re-read is faster for reasons unrelated to the reader's pace --
+falling back to a default of 150 until at least 3 exist; the setup screen's
+duration estimate and the gate's own estimate both read it.
 
 ## Sumi UI
 
@@ -412,8 +557,14 @@ HTTP 421.
 
 ## Known gaps
 
-- No domain tables yet -- `app_settings` is the only table. Reading texts,
-  progress and statistics arrive with their own issues, and Read, History,
-  Stats and Topics are placeholder pages until then.
+- History and Stats are still placeholder pages -- issue #12 and later give
+  them something real to show, built on the `reading_sessions`/`help_events`
+  tables issue #9 added.
+- The word popover shows no action buttons and the session bar shows no chat
+  action -- issue #10 (Explain/Translate/Grammar/Tutor) and #11 (the tutor
+  chat) wire those up; `ReadingScreen.chatEnabled`/`WordDetails.actions` are
+  already there, just unused from `/read/:sessionId` until then.
+- Stretch is a static preset, not yet adaptive to the learner's own progress
+  (issue #13).
 - No authentication. Single user, LAN only -- the same assumption the other
   stacks make.

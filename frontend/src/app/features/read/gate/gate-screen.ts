@@ -1,5 +1,6 @@
 import { Component, computed, input, output } from '@angular/core';
 import { SumiSegmentedBar, type SumiSegment } from 'sumi-ui/charts';
+import { SumiBanner } from 'sumi-ui/layout';
 import { SumiSessionGate } from 'sumi-ui/practice';
 import type { JlptShares } from '../setup/setup.types';
 
@@ -17,7 +18,7 @@ const JLPT_COLORS: Record<keyof JlptShares, string> = {
   selector: 'app-gate-screen',
   templateUrl: './gate-screen.html',
   styleUrl: './gate-screen.scss',
-  imports: [SumiSessionGate, SumiSegmentedBar],
+  imports: [SumiSessionGate, SumiSegmentedBar, SumiBanner],
   host: { class: 'app-gate-screen' },
 })
 export class GateScreen {
@@ -26,6 +27,12 @@ export class GateScreen {
   readonly estimatedMinutes = input.required<number>();
   readonly unknownKanjiPercent = input.required<number>();
   readonly jlptMix = input.required<JlptShares>();
+
+  /** Set only when the generated text's `kanji_trainer_error` was set
+   *  (issue #9's brief) -- generation still happened, just without the
+   *  learner's own known set, so the gate says so instead of the measured
+   *  values quietly meaning something different than usual. */
+  readonly kanjiTrainerErrorNote = input<string | null>(null);
 
   readonly start = output<void>();
 

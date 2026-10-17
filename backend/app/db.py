@@ -38,6 +38,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     false,
     func,
     select,
@@ -211,6 +212,84 @@ class GeneratedText(Base):
     usage: Mapped[list] = mapped_column(JSONB, nullable=False)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ReadingSession(Base):
+    """One reading session for a generated text (issue #9).
+
+    Reading a text again (`POST /api/sessions` with the same `text_id`)
+    always starts a new row -- a session is one attempt, not a resumable
+    slot shared across attempts. `status` walks `reading -> questions ->
+    finished`, driven entirely by `api/sessions.py`. `active_ms`/`paused_ms`
+    are the heartbeat's own running totals (monotonic -- a heartbeat only
+    ever raises them, never lowers them); `answers` is one entry per
+    question (the chosen option index, or `None` while unanswered), index-
+    aligned with the text's own `questions`. `comprehension_correct` is
+    `None` until `finished`, then the number of questions answered
+    correctly (stats read it without re-checking every answer).
+    """
+
+    __tablename__ = "reading_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text_id: Mapped[int] = mapped_column(
+        ForeignKey("texts.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="reading")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reading_finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    paused_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    answers: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    comprehension_correct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class HelpEvent(Base):
+    """One costed help, logged once per word/session (issue #9).
+
+    `kind` is a plain string column, not a DB enum, so issue #10 can add
+    `explain`/`translate`/`grammar`/`tutor` without a schema change -- see
+    `helps.py` for every weight, defined now even though only
+    `reading_peek`/`word_lookup` are wired up yet. The unique constraint on
+    `(session_id, kind, lemma)` is the dedupe itself: a repeat insert is a
+    no-op (`ON CONFLICT DO NOTHING`, see `api/sessions.py`), and its weight
+    is the "counted once per word per session" rule from the concept, not a
+    second thing the code has to decide. `token_id` is kept alongside
+    `lemma`/`surface` so the summary can join back to the exact occurrence
+    that was first looked up (e.g. for the reading shown on the summary's
+    looked-up-words list), even though the dedupe key is the lemma.
+    """
+
+    __tablename__ = "help_events"
+    __table_args__ = (
+        UniqueConstraint("session_id", "kind", "lemma", name="uq_help_events_session_kind_lemma"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("reading_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    token_id: Mapped[str] = mapped_column(String, nullable=False)
+    lemma: Mapped[str] = mapped_column(String, nullable=False)
+    surface: Mapped[str] = mapped_column(String, nullable=False)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: `ReadingSession.active_ms` at the moment this help was logged.
+    at_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

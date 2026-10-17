@@ -1,0 +1,50 @@
+@switch (state()) {
+  @case ('reading') {
+    <app-reading-screen
+      [text]="readingText()"
+      [elapsedLabel]="elapsedLabel()"
+      [paused]="paused()"
+      [selectedWord]="selectedWord()"
+      [selectedWordId]="selectedWordId()"
+      [chatEnabled]="false"
+      (wordActivate)="onWordActivate($event)"
+      (readingPeeked)="onReadingPeeked($event)"
+      (closeWord)="onCloseWord()"
+      (pauseToggle)="onPauseToggle()"
+      (doneReading)="onDoneReading()"
+    />
+  }
+  @case ('questions') {
+    <app-questions-screen
+      [question]="currentQuestion()"
+      [questionNumber]="currentQuestionIndex() + 1"
+      [totalQuestions]="totalQuestions()"
+      [selectedOptionId]="selectedOptionId()"
+      [answered]="answered()"
+      (select)="onSelectOption($event)"
+      (next)="onNextQuestion()"
+    />
+  }
+  @case ('finished') {
+    @if (summary(); as s) {
+      <app-summary-screen
+        [speedCharsPerMinute]="s.chars_per_minute"
+        [helpsPerHundredWords]="s.helps_per_100_words"
+        [questionsCorrect]="s.questions_correct"
+        [questionsTotal]="s.questions_total"
+        [activeTimeMs]="s.active_ms"
+        [lookedUpWords]="summaryLookedUpWords()"
+        (readAgain)="onReadAgain()"
+        (newText)="onNewText()"
+      />
+    }
+  }
+  @case ('error') {
+    <sumi-error-state title="This session could not be loaded" companion="fukurou">
+      {{ errorMessage() }}
+      <button sumiErrorAction type="button" sumiButton variant="primary" (click)="onBackToSetup()">
+        Back to setup
+      </button>
+    </sumi-error-state>
+  }
+}

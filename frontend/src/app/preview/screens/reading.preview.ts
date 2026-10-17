@@ -97,12 +97,10 @@ export class ReadingPreview {
     } else if (variant === 'paused') {
       this.paused.set(true);
     } else if (variant === 'word' || variant === 'answer' || variant === 'peek') {
-      // `sumi-reading-text`'s `wordActivated` only carries a `DOMRect`
-      // snapshot (see `ReadingScreen.resolveAnchorElement`'s doc comment),
-      // and its hover/long-press peek has no preview-only override any
-      // more either (the old prototype's `forcePeekWordId` has no library
-      // equivalent) — both used to be driven by a dedicated preview-only
-      // input/anchor rect. Dispatching the *real* gesture on the rendered
+      // The popover anchors on the word element `wordActivated` carries,
+      // and the hover/long-press peek has no preview-only override (the
+      // old prototype's `forcePeekWordId` has no library equivalent).
+      // Dispatching the *real* gesture on the rendered
       // word span after the first render exercises the exact same code
       // path a learner's tap/hover would, which is simpler than threading
       // a second, preview-only bypass through `ReadingScreen` for a state
