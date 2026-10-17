@@ -27,6 +27,11 @@ export const routes: Routes = [
     title: 'Read · JP Reading Practice',
   },
   {
+    path: 'read/:sessionId',
+    loadComponent: () => import('./pages/read/read-session').then((m) => m.ReadSessionPage),
+    title: 'Read · JP Reading Practice',
+  },
+  {
     path: 'history',
     loadComponent: () => import('./pages/history/history').then((m) => m.HistoryPage),
     title: 'History · JP Reading Practice',

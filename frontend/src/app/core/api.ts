@@ -3,13 +3,26 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import type {
+  AnswerPayload,
+  AnswerResultApi,
+  FinishReadingPayload,
+  HelpPayload,
+  HelpResultApi,
   KanjiTrainerStatus,
   ModelCatalog,
+  ReadingPaceApi,
+  SessionOutApi,
+  SessionSummaryApi,
+  SessionTimeApi,
+  SessionTimePayload,
   Settings,
   SettingsPatch,
+  TextCreatePayload,
+  TextOutApi,
   TopicApi,
   TopicCreatePayload,
   TopicUpdatePayload,
+  WordLookupApi,
 } from './api.types';
 
 /**
@@ -106,6 +119,83 @@ export class Api {
 
   deleteTopic(id: number): Promise<void> {
     return firstValueFrom(this.http.delete<void>(`/api/topics/${id}`)).catch(rethrow);
+  }
+
+  // --- text generation (issue #8) ------------------------------------------
+
+  createText(payload: TextCreatePayload): Promise<TextOutApi> {
+    return firstValueFrom(this.http.post<TextOutApi>('/api/texts', payload)).catch(rethrow);
+  }
+
+  text(id: number): Promise<TextOutApi> {
+    return this.get(`/api/texts/${id}`);
+  }
+
+  readingPace(): Promise<ReadingPaceApi> {
+    return this.get('/api/reading/pace');
+  }
+
+  // --- reading sessions (issue #9) ------------------------------------------
+
+  createSession(textId: number): Promise<SessionOutApi> {
+    return firstValueFrom(
+      this.http.post<SessionOutApi>('/api/sessions', { text_id: textId }),
+    ).catch(rethrow);
+  }
+
+  session(id: number): Promise<SessionOutApi> {
+    return this.get(`/api/sessions/${id}`);
+  }
+
+  heartbeat(id: number, payload: SessionTimePayload): Promise<SessionTimeApi> {
+    return firstValueFrom(this.http.put<SessionTimeApi>(`/api/sessions/${id}/time`, payload)).catch(
+      rethrow,
+    );
+  }
+
+  /**
+   * Same heartbeat, sent with `keepalive` so it survives the page becoming
+   * hidden (a backgrounded tab on a phone) -- `HttpClient` has no
+   * `keepalive` option, so this one call bypasses it for a plain `fetch`
+   * (brief: "on `visibilitychange` hidden (`keepalive` fetch)"). Fire-and-
+   * forget: nothing reads the response, and nothing here can retry it
+   * anyway once the page is gone.
+   */
+  heartbeatKeepalive(id: number, payload: SessionTimePayload): void {
+    fetch(`/api/sessions/${id}/time`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => undefined);
+  }
+
+  logHelp(id: number, payload: HelpPayload): Promise<HelpResultApi> {
+    return firstValueFrom(
+      this.http.post<HelpResultApi>(`/api/sessions/${id}/helps`, payload),
+    ).catch(rethrow);
+  }
+
+  lookupWord(id: number, tokenId: string): Promise<WordLookupApi> {
+    return firstValueFrom(
+      this.http.post<WordLookupApi>(`/api/sessions/${id}/lookups`, { token_id: tokenId }),
+    ).catch(rethrow);
+  }
+
+  finishReading(id: number, payload: FinishReadingPayload): Promise<SessionOutApi> {
+    return firstValueFrom(
+      this.http.post<SessionOutApi>(`/api/sessions/${id}/finish-reading`, payload),
+    ).catch(rethrow);
+  }
+
+  answerQuestion(id: number, payload: AnswerPayload): Promise<AnswerResultApi> {
+    return firstValueFrom(
+      this.http.post<AnswerResultApi>(`/api/sessions/${id}/answers`, payload),
+    ).catch(rethrow);
+  }
+
+  summary(id: number): Promise<SessionSummaryApi> {
+    return this.get(`/api/sessions/${id}/summary`);
   }
 
   // --- plumbing -------------------------------------------------------------

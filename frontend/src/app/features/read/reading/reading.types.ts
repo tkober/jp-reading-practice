@@ -41,7 +41,9 @@ export interface WordDetails {
    *  for `kind: 'word'` (the default); a grammar pattern has no Kanji
    *  Trainer status of its own. */
   knownStatus?: string;
-  actions: readonly WordActionOption[];
+  /** Omitted (or empty) for issue #9: the popover shows no action buttons
+   *  at all until #10 (Explain/Translate/Grammar/Tutor) wires them up. */
+  actions?: readonly WordActionOption[];
   /** `'word'` (default) looks up a single word, with a JLPT badge and
    *  Kanji Trainer status; `'grammar'` looks up a grammar pattern instead
    *  -- shown with a "Grammar" badge and no Kanji Trainer line. */

@@ -7,18 +7,20 @@
     [showEndSession]="false"
     (pauseToggle)="pauseToggle.emit()"
   >
-    <button
-      type="button"
-      class="chat-action"
-      sumiSessionBarActions
-      aria-label="Ask about this text"
-      title="Ask about this text"
-      [attr.aria-pressed]="chatOpen()"
-      (click)="chatToggle.emit()"
-    >
-      <sumi-icon name="chat" />
-      <span sumiSessionBarActionLabel>Ask about this text</span>
-    </button>
+    @if (chatEnabled()) {
+      <button
+        type="button"
+        class="chat-action"
+        sumiSessionBarActions
+        aria-label="Ask about this text"
+        title="Ask about this text"
+        [attr.aria-pressed]="chatOpen()"
+        (click)="chatToggle.emit()"
+      >
+        <sumi-icon name="chat" />
+        <span sumiSessionBarActionLabel>Ask about this text</span>
+      </button>
+    }
   </sumi-session-bar>
 
   <div class="columns">
@@ -150,7 +152,7 @@
 
     @if (selectedWord(); as details) {
       <div sumiPopoverActions class="word-actions">
-        @for (actionOption of details.actions; track actionOption.kind) {
+        @for (actionOption of details.actions ?? []; track actionOption.kind) {
           <button
             type="button"
             sumiButton

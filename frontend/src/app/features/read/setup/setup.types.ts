@@ -38,13 +38,25 @@ export interface DifficultySettings {
   style: TextStyle;
 }
 
-/** The three presets' own settings — "Stretch" additionally adapts after
- *  every session (see the one-line note under the control), which this
- *  table does not capture since it is behaviour, not a starting value. */
+/**
+ * The three presets' own settings — "Stretch" additionally adapts after
+ * every session (see the one-line note under the control), which this
+ * table does not capture since it is behaviour, not a starting value.
+ *
+ * These numbers match the backend's own `presets.py` (`unknown_kanji_target`
+ * as a percent, `jlpt_mix` as shares out of 100) -- issue #9's wiring: a
+ * preset chosen without opening "Adjust" sends no `overrides` at all and
+ * lets the backend's own preset apply, so what this screen promises before
+ * generating and what the gate actually measures have to agree. `style`
+ * has no backend equivalent (the backend's own presets leave it `None` --
+ * the *topic's* `default_style` wins unless overridden); kept here only so
+ * the summary line and the "Adjust" control have something to show, and
+ * never sent unless the learner actually opens "Adjust" and changes it.
+ */
 export const DIFFICULTY_PRESETS: Record<DifficultyPreset, DifficultySettings> = {
   easy: {
     unknownKanjiSharePercent: 2,
-    jlptMix: { n5: 70, n4: 25, n3: 5, n2: 0, n1: 0 },
+    jlptMix: { n5: 70, n4: 30, n3: 0, n2: 0, n1: 0 },
     style: 'polite',
   },
   stretch: {
@@ -53,8 +65,8 @@ export const DIFFICULTY_PRESETS: Record<DifficultyPreset, DifficultySettings> = 
     style: 'polite',
   },
   challenge: {
-    unknownKanjiSharePercent: 12,
-    jlptMix: { n5: 20, n4: 30, n3: 35, n2: 15, n1: 0 },
+    unknownKanjiSharePercent: 10,
+    jlptMix: { n5: 30, n4: 35, n3: 25, n2: 10, n1: 0 },
     style: 'formal',
   },
 };
@@ -71,9 +83,7 @@ const JLPT_LABELS: Record<keyof JlptShares, string> = {
 /** "Mostly N5–N4 · up to 5% unknown kanji · polite" — the one-line summary
  *  shown under the collapsed difficulty control. */
 export function summarizeDifficulty(settings: DifficultySettings): string {
-  const byShareDesc = [...JLPT_ORDER].sort(
-    (a, b) => settings.jlptMix[b] - settings.jlptMix[a],
-  );
+  const byShareDesc = [...JLPT_ORDER].sort((a, b) => settings.jlptMix[b] - settings.jlptMix[a]);
   const topTwo = byShareDesc.slice(0, 2).filter((level) => settings.jlptMix[level] > 0);
   // Back to level order (N5 → N1), not share order, so "N4–N5" never reads
   // backwards even when N4 happens to have the larger share.

@@ -75,6 +75,17 @@ export class ReadingScreen {
   readonly elapsedLabel = input('0:00');
   readonly paused = input(false);
 
+  /**
+   * Whether the session bar's "Ask about this text" chat action is shown
+   * at all -- `true` by default so every existing `/preview/reading*`
+   * route keeps showing it unchanged. Issue #9 sets this `false`: the
+   * tutor chat is #11's own scope, and a button that opens a panel with
+   * nothing behind it yet would be worse than no button. `sumi-side-panel`
+   * itself stays in the template regardless -- with no way to open it,
+   * it simply never does.
+   */
+  readonly chatEnabled = input(true);
+
   readonly selectedWord = input<WordDetails | null>(null);
   readonly selectedWordId = input<string | null>(null);
   readonly wordAnswer = input<WordAnswer | null>(null);
