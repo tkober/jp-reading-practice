@@ -31,3 +31,15 @@ npm start   # proxies /api to :8000, see proxy.conf.json
 
 Or both together: `./dev.sh` (needs `backend/.env`, copied from
 `backend/.env.example`).
+
+## Deploying to unraid
+
+Two GHCR images (`ghcr.io/tkober/jp-reading-practice-backend` / `-frontend`),
+built by GitHub Actions on every push to `main`. Copy
+`deploy/jp_reading_practice/` into the `compose-stacks-unraid` repository,
+fill in `env/jp-reading-practice-backend/.env` from the `.env.example` beside
+it, bootstrap the database with the SQL in `dbeaver/` (`verify.sql` if
+authentication fails), and start the stack -- the UI is on port **8088**; the
+backend publishes nothing and is reached through the frontend's nginx. See
+`CLAUDE.md`'s "Deployment" section for the caching rules, the LLM request's
+180s proxy timeout, and the `MCP_ALLOWED_HOSTS` dependency on Kanji Trainer.
