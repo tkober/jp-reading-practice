@@ -28,7 +28,22 @@ from typing import Any
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, Text, func, select, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    false,
+    func,
+    select,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import (
@@ -40,6 +55,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from .config import get_settings
+from .topic_files import load_topic_files
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +133,89 @@ class AppSettings(Base):
     )
 
 
+class Topic(Base):
+    """A domain the learner can generate reading texts about (issue #8).
+
+    ``title`` and ``prompt`` are English -- ``prompt`` is model-facing (it is
+    framed as a domain inside `prompts.py`'s fixed generation frame, never
+    instructions that can override it, same lesson as jp-conversation-
+    practice's scenarios); ``glyph`` is the short Japanese word/kanji shown
+    on the topic tile (e.g. 旅行). Seeded from ``backend/topics/*.md`` at
+    startup (``seed_topics``) -- a topic the user has edited
+    (``is_customized``) keeps its wording across a redeploy, exactly like
+    jp-conversation-practice's ``Scenario``/``seed_scenarios``.
+
+    ``feed_urls`` is a JSON list of RSS feed URLs, used by #15's current-
+    events generation -- unused by anything in this issue beyond storage and
+    the editor's UI for it.
+    """
+
+    __tablename__ = "topics"
+    __table_args__ = (Index("idx_topics_sort", "sort_order", "title"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    glyph: Mapped[str] = mapped_column(String, nullable=False, server_default="")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    default_style: Mapped[str] = mapped_column(String, nullable=False, server_default="casual")
+    feed_urls: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="100")
+    is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    is_customized: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class GeneratedText(Base):
+    """One generated reading text (issue #8).
+
+    Named ``GeneratedText`` rather than ``Text`` purely to avoid shadowing
+    ``sqlalchemy.Text`` (the column type) in this module -- the table itself
+    is ``texts``, per the brief.
+
+    ``topic_id`` is nullable with ``ON DELETE SET NULL``: deleting a custom
+    topic must not delete the texts generated from it, it only loses the
+    link (the topic slug/title travel inside ``params`` for that reason,
+    so a text stays self-describing even once its topic is gone, or for the
+    "surprise me" case which never had one).
+
+    ``params`` records what was *asked for* (topic slug, length target,
+    preset, unknown-kanji target, JLPT mix target, style); ``analysis`` is
+    the full `TextAnalysis` (tokens + metrics) as of generation, used to
+    render the reading screen without re-tokenising; ``known_snapshot`` is
+    deliberately smaller than the known set itself -- counts and the
+    learner's level, not the full kanji/vocabulary lists, which would bloat
+    every row for data `analyze()` already reduced into the metrics above.
+    ``usage``/``cost_usd`` are per the generation call(s) -- see
+    `generation.py` and `pricing.py`.
+    """
+
+    __tablename__ = "texts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    topic_id: Mapped[int | None] = mapped_column(
+        ForeignKey("topics.id", ondelete="SET NULL"), nullable=True
+    )
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    questions: Mapped[list] = mapped_column(JSONB, nullable=False)
+    analysis: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    known_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    usage: Mapped[list] = mapped_column(JSONB, nullable=False)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # --- engine ------------------------------------------------------------------
 
 _engine: AsyncEngine | None = None
@@ -177,6 +276,7 @@ async def init_db() -> None:
             await conn.run_sync(_alembic_upgrade_head)
         async with async_sessionmaker(owner_engine, expire_on_commit=False)() as session:
             await ensure_settings_row(session)
+            await seed_topics(session)
             await session.commit()
     finally:
         await owner_engine.dispose()
@@ -255,3 +355,45 @@ async def ensure_settings_row(session: AsyncSession) -> None:
 async def load_settings(session: AsyncSession) -> AppSettings | None:
     """Read the single settings row, if it exists yet."""
     return await session.scalar(select(AppSettings).where(AppSettings.id == SETTINGS_ROW_ID))
+
+
+async def seed_topics(session: AsyncSession) -> None:
+    """Insert the Markdown-defined topics, refreshing the untouched ones.
+
+    Same shape as jp-conversation-practice's ``seed_scenarios``: a topic the
+    user has edited (``is_customized``) keeps its wording -- the upsert
+    deliberately skips those rows rather than restoring the file text.
+    """
+    files = load_topic_files()
+    if not files:
+        log.warning("No topic files found; starting without built-in topics")
+        return
+
+    for index, entry in enumerate(files):
+        stmt = postgresql_insert(Topic).values(
+            slug=entry.slug,
+            title=entry.title,
+            glyph=entry.glyph,
+            prompt=entry.prompt,
+            default_style=entry.default_style,
+            feed_urls=entry.feed_urls,
+            is_builtin=True,
+            sort_order=index,
+        )
+        await session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Topic.slug],
+                set_={
+                    "title": stmt.excluded.title,
+                    "glyph": stmt.excluded.glyph,
+                    "prompt": stmt.excluded.prompt,
+                    "default_style": stmt.excluded.default_style,
+                    "feed_urls": stmt.excluded.feed_urls,
+                    "sort_order": stmt.excluded.sort_order,
+                    "updated_at": func.now(),
+                },
+                where=Topic.is_customized.is_(False),
+            )
+        )
+
+    log.info("Seeded %d built-in topic(s)", len(files))

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # slot also writes prose rather than driving a live exchange, which is
     # worth a stronger model.
     help_model: str = "gpt-4o"
+    # Where the built-in topics' Markdown files live -- see topic_files.py.
+    topics_dir: str = "topics"
 
     # --- Kanji Trainer MCP ---
     # Where the known-vocabulary source lives, for the MCP client that lands

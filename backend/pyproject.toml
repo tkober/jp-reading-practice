@@ -20,6 +20,9 @@ dependencies = [
     # furigana.py (issue #7's "take over its ruby splitting").
     "fugashi>=1.5.2",
     "unidic-lite>=1.0.8",
+    # Topics ship as Markdown + YAML front matter, same as
+    # jp-conversation-practice's scenarios (scenario_files.py).
+    "python-frontmatter>=1.1.0",
 ]
 
 [dependency-groups]
