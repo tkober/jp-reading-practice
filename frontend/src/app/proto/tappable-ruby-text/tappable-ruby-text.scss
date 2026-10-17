@@ -67,6 +67,16 @@
     outline: none;
     box-shadow: var(--sumi-focus-ring);
   }
+
+  // Only while a touch is actually pressing *this* word (set from
+  // `pointerdown` to `pointerup`/`pointercancel`, see the component) — not
+  // on the whole paragraph, which still needs normal text selection to
+  // work for copying.
+  &--pressing {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 ruby {

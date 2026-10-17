@@ -1,10 +1,13 @@
-import { Component, inject, input, output } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { SumiIcon } from 'sumi-ui/core';
 import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiFocusModeDirective, SumiShellFocusActionsDirective } from 'sumi-ui/layout';
-import { SumiFurigana, SumiFuriganaToggle } from 'sumi-ui/practice';
 import { SidePanel, type ChatMessage } from '../../../proto/side-panel/side-panel';
-import { TappableRubyText, type WordActivateEvent } from '../../../proto/tappable-ruby-text/tappable-ruby-text';
+import {
+  TappableRubyText,
+  type ReadingWord,
+  type WordActivateEvent,
+} from '../../../proto/tappable-ruby-text/tappable-ruby-text';
 import {
   WordPopoverSheet,
   type WordActionKind,
@@ -16,10 +19,19 @@ import type { ReadingTextData } from './reading.types';
 
 /**
  * The reading screen itself: focus mode, the session bar (timer/pause/
- * furigana toggle) in the shell header, the text, and the word lookup /
- * chat overlays. Fully controlled — `selectedWord`/`chatOpen`/`paused` etc.
- * all come from outside, so the host page (#9+) owns the actual session
- * state; this component only renders it and reports interactions.
+ * chat) in the shell header, the text, and the word lookup / chat
+ * overlays. Fully controlled — `selectedWord`/`chatOpen`/`paused` etc. all
+ * come from outside, so the host page (#9+) owns the actual session state;
+ * this component only renders it and reports interactions.
+ *
+ * There is deliberately no app-wide furigana on/off control in this bar
+ * any more (it used to sit next to pause/chat): with per-word reading
+ * peeks now in the text itself (see `TappableRubyText`), a second,
+ * app-wide furigana toggle right next to it would be two different
+ * "furigana" concepts competing for the same spot in one small header.
+ * That preference — whether ruby shows at all, for unknown words and
+ * peeks alike (`SumiFurigana`, still read by `TappableRubyText` directly)
+ * — belongs in Settings instead, once a later issue adds it there.
  */
 @Component({
   selector: 'app-reading-screen',
@@ -30,7 +42,6 @@ import type { ReadingTextData } from './reading.types';
     SumiShellFocusActionsDirective,
     SumiIcon,
     SumiButtonDirective,
-    SumiFuriganaToggle,
     TappableRubyText,
     WordPopoverSheet,
     SidePanel,
@@ -38,17 +49,12 @@ import type { ReadingTextData } from './reading.types';
   host: { class: 'app-reading-screen' },
 })
 export class ReadingScreen {
-  /** Injected directly (rather than only used through `sumi-furigana-
-   *  toggle`) for the phone header's icon-only toggle button below —
-   *  `sumi-furigana-toggle` always renders its own "Furigana" text label,
-   *  which has nowhere to go in a one-row compact header. The real
-   *  component is still used at ≥720px (see the template). */
-  protected readonly furigana = inject(SumiFurigana);
-
   readonly text = input.required<ReadingTextData>();
   readonly elapsedLabel = input('0:00');
   readonly paused = input(false);
-  readonly furiganaEverywhere = input(false);
+  /** Preview-only — see `TappableRubyText.forcePeekWordId`'s doc comment;
+   *  forwarded straight through, never set outside the design preview. */
+  readonly previewForcePeekWordId = input<string | null>(null);
 
   readonly selectedWord = input<WordDetails | null>(null);
   readonly selectedWordAnchor = input<WordAnchorRect | null>(null);
@@ -60,6 +66,8 @@ export class ReadingScreen {
   readonly chatSending = input(false);
 
   readonly wordActivate = output<WordActivateEvent>();
+  /** Forwarded straight from `TappableRubyText` — see its own doc comment. */
+  readonly readingPeeked = output<ReadingWord>();
   readonly closeWord = output<void>();
   readonly wordAction = output<WordActionKind>();
   readonly pauseToggle = output<void>();

@@ -4,7 +4,12 @@
       <h2 sumiCardHeader>{{ group.title }}</h2>
       <ul class="links">
         @for (link of group.links; track link.path) {
-          <li><a [routerLink]="link.path">{{ link.label }}</a></li>
+          <li>
+            <a [routerLink]="link.path">{{ link.label }}</a>
+            @if (link.note) {
+              <p class="link-note">{{ link.note }}</p>
+            }
+          </li>
         }
       </ul>
     </sumi-card>

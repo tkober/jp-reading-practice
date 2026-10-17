@@ -62,9 +62,9 @@ export const previewRoutes: Routes = [
     data: { variant: 'chat' },
   },
   {
-    path: 'reading-furigana-all',
+    path: 'reading-peek',
     loadComponent: () => import('./screens/reading.preview').then((m) => m.ReadingPreview),
-    data: { variant: 'furigana-all' },
+    data: { variant: 'peek' },
   },
   {
     path: 'reading-paused',

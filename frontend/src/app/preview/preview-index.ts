@@ -5,6 +5,10 @@ import { SumiCard, SumiPage } from 'sumi-ui/layout';
 interface PreviewLink {
   path: string;
   label: string;
+  /** Shown as a small note under the link — for a state this page cannot
+   *  itself demonstrate (e.g. a gesture-driven one, see "Reading — reading
+   *  peek" below). */
+  note?: string;
 }
 
 interface PreviewGroup {
@@ -31,8 +35,15 @@ const GROUPS: readonly PreviewGroup[] = [
       { path: 'reading-word', label: 'Reading — word popover/sheet' },
       { path: 'reading-answer', label: 'Reading — word answer' },
       { path: 'reading-chat', label: 'Reading — chat panel' },
-      { path: 'reading-furigana-all', label: 'Reading — furigana everywhere' },
-      { path: 'reading-paused', label: 'Reading — paused' },
+      {
+        path: 'reading-peek',
+        label: 'Reading — reading peek',
+        note:
+          'Shows 旅行 mid-peek, forced for this static page. For real: hover a known ' +
+          'word ~500ms (desktop) or long-press it ~400ms (phone) to see its reading; ' +
+          'moving away cancels it, a short tap opens the word lookup instead.',
+      },
+      { path: 'reading-paused', label: 'Reading — paused (blurred)' },
     ],
   },
   {

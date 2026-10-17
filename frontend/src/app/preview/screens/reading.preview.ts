@@ -3,6 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { ReadingScreen } from '../../features/read/reading/reading-screen';
 import type {
   ChatMessage,
+  ReadingWord,
   WordActionKind,
   WordActionOption,
   WordAnchorRect,
@@ -19,7 +20,7 @@ import {
   WORD_DETAILS_PRIMARY,
 } from '../fixtures/word-lookup.fixture';
 
-export type ReadingPreviewVariant = 'default' | 'word' | 'answer' | 'chat' | 'furigana-all' | 'paused';
+export type ReadingPreviewVariant = 'default' | 'word' | 'answer' | 'chat' | 'peek' | 'paused';
 
 const DEFAULT_ACTIONS: readonly WordActionOption[] = [
   { kind: 'explain', label: 'Explain word', weight: 2 },
@@ -45,7 +46,7 @@ const GRAMMAR_TOKEN_ANCHOR: WordAnchorRect = { x: 582, y: 477, width: 286, heigh
       [text]="text"
       [elapsedLabel]="elapsedLabel()"
       [paused]="paused()"
-      [furiganaEverywhere]="furiganaEverywhere()"
+      [previewForcePeekWordId]="forcePeekWordId()"
       [selectedWord]="selectedWord()"
       [selectedWordAnchor]="selectedWordAnchor()"
       [selectedWordId]="selectedWordId()"
@@ -54,6 +55,7 @@ const GRAMMAR_TOKEN_ANCHOR: WordAnchorRect = { x: 582, y: 477, width: 286, heigh
       [chatMessages]="chatMessages()"
       [chatSending]="chatSending()"
       (wordActivate)="onWordActivate($event)"
+      (readingPeeked)="onReadingPeeked($event)"
       (closeWord)="onCloseWord()"
       (wordAction)="onWordAction($event)"
       (pauseToggle)="paused.set(!paused())"
@@ -64,6 +66,11 @@ const GRAMMAR_TOKEN_ANCHOR: WordAnchorRect = { x: 582, y: 477, width: 286, heigh
     @if (doneReading()) {
       <p class="preview-note">→ would navigate to /preview/questions</p>
     }
+    @if (lastPeek(); as word) {
+      <p class="preview-note">
+        → readingPeeked: {{ word.text }} ({{ word.reading }}) — a weight-1 help, logged once per word
+      </p>
+    }
   `,
   styles: ['.preview-note { margin: var(--sumi-space-3) var(--sumi-space-4); color: var(--sumi-accent-ink); font-size: var(--sumi-text-sm); }'],
   imports: [ReadingScreen],
@@ -72,7 +79,12 @@ export class ReadingPreview {
   protected readonly text = READING_TEXT;
   protected readonly elapsedLabel = signal('3:12');
   protected readonly paused = signal(false);
-  protected readonly furiganaEverywhere = signal(false);
+  /** Preview-only — see `ReadingScreen.previewForcePeekWordId`. Statically
+   *  shows a known word's reading peeking, for `/preview/reading-peek`: a
+   *  direct page load has no real hover/long-press to show, see the index
+   *  note next to that route for how the real gesture works. */
+  protected readonly forcePeekWordId = signal<string | null>(null);
+  protected readonly lastPeek = signal<ReadingWord | null>(null);
 
   protected readonly selectedWord = signal<WordDetails | null>(null);
   protected readonly selectedWordAnchor = signal<WordAnchorRect | null>(null);
@@ -99,8 +111,8 @@ export class ReadingPreview {
     } else if (variant === 'chat') {
       this.chatOpen.set(true);
       this.chatMessages.set(CHAT_MESSAGES);
-    } else if (variant === 'furigana-all') {
-      this.furiganaEverywhere.set(true);
+    } else if (variant === 'peek') {
+      this.forcePeekWordId.set(findWordByText('旅行').id);
     } else if (variant === 'paused') {
       this.paused.set(true);
     }
@@ -123,6 +135,10 @@ export class ReadingPreview {
       actions: DEFAULT_ACTIONS,
     });
     this.wordAnswer.set(null);
+  }
+
+  protected onReadingPeeked(word: ReadingWord): void {
+    this.lastPeek.set(word);
   }
 
   protected onCloseWord(): void {
