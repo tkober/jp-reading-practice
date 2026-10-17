@@ -1,0 +1,62 @@
+:host {
+  display: block;
+  font-family: var(--sumi-font-ui);
+  font-size: 22px;
+  line-height: 2.1;
+  color: var(--sumi-text);
+}
+
+@media (max-width: 720px) {
+  :host {
+    font-size: 19px;
+  }
+}
+
+.paragraph {
+  margin: 0 0 var(--sumi-space-5) 0;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.word {
+  display: inline;
+  border: none;
+  background: transparent;
+  padding: 2px 1px;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+
+  // Subtle affordance: visible only on hover/focus, never a permanent
+  // underline under every word (that would read as "all links").
+  &:hover,
+  &:focus-visible {
+    background: var(--sumi-accent-soft);
+    box-shadow: 0 1px 0 0 var(--sumi-accent-ink);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &--selected {
+    background: var(--sumi-accent-soft);
+    box-shadow: 0 1px 0 0 var(--sumi-accent-ink);
+  }
+}
+
+ruby {
+  ruby-align: center;
+}
+
+rt {
+  font-size: 0.45em;
+  font-weight: 400;
+  color: var(--sumi-muted);
+  user-select: none;
+}

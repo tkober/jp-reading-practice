@@ -1,0 +1,36 @@
+<div class="backdrop" (click)="close.emit()"></div>
+
+<div class="panel" role="dialog" aria-modal="true" [attr.aria-label]="title()">
+  <div class="header">
+    <h2>{{ title() }}</h2>
+    <button type="button" sumiButton variant="ghost" size="sm" (click)="close.emit()">
+      <sumi-icon name="close" />
+      <span class="sr-only">Close</span>
+    </button>
+  </div>
+
+  <div class="messages">
+    @for (message of messages(); track $index) {
+      <p class="message" [class.message--user]="message.role === 'user'" lang="ja">
+        {{ message.text }}
+      </p>
+    }
+    @if (sending()) {
+      <p class="message message--pending" aria-live="polite">…</p>
+    }
+  </div>
+
+  <div class="composer">
+    <textarea
+      sumiTextarea
+      rows="2"
+      placeholder="Ask about this text…"
+      [value]="draft()"
+      (input)="draft.set($any($event.target).value)"
+      (keydown)="onKeydown($event)"
+    ></textarea>
+    <button type="button" sumiButton variant="primary" size="sm" [disabled]="!canSend()" (click)="onSend()">
+      Send
+    </button>
+  </div>
+</div>

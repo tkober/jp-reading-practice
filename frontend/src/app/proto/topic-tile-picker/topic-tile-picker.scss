@@ -1,0 +1,51 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: var(--sumi-space-3);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sumi-space-1);
+  min-height: 88px;
+  padding: var(--sumi-space-3) var(--sumi-space-2);
+  border: 1px solid var(--sumi-line);
+  border-radius: var(--sumi-radius);
+  background: var(--sumi-surface);
+  color: var(--sumi-text);
+  font-family: var(--sumi-font-ui);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--sumi-accent-ink);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &--selected {
+    border-color: var(--sumi-accent);
+    background: var(--sumi-accent-soft);
+  }
+}
+
+.glyph {
+  font-size: var(--sumi-text-2xl);
+  line-height: 1;
+}
+
+.name {
+  font-size: var(--sumi-text-xs);
+  color: var(--sumi-text-2);
+  text-align: center;
+}
+
+.tile--selected .name {
+  color: var(--sumi-text);
+  font-weight: 600;
+}

@@ -1,0 +1,110 @@
+.track {
+  position: relative;
+  height: 32px;
+  margin-bottom: var(--sumi-space-2);
+}
+
+.bar {
+  position: absolute;
+  inset: 0;
+  top: 10px;
+  bottom: 10px;
+  display: flex;
+  border-radius: var(--sumi-radius-sm);
+  overflow: hidden;
+  background: var(--sumi-sunken);
+}
+
+.segment {
+  height: 100%;
+  transition: width 0.1s ease-out;
+}
+
+// Four native range inputs stacked on the same track: the track itself is
+// invisible and does not intercept pointer events (the coloured `.bar`
+// behind it is the visible track), only the thumb does -- the standard
+// trick for a multi-thumb slider built from several single-thumb ranges.
+.handle {
+  position: absolute;
+  inset: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+
+  &::-webkit-slider-runnable-track {
+    background: transparent;
+  }
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    pointer-events: auto;
+    width: 14px;
+    height: 24px;
+    border-radius: var(--sumi-radius-sm);
+    background: var(--sumi-surface);
+    border: 2px solid var(--sumi-accent-ink);
+    cursor: ew-resize;
+  }
+
+  &::-moz-range-track {
+    background: transparent;
+    border: none;
+  }
+
+  &::-moz-range-thumb {
+    pointer-events: auto;
+    width: 10px;
+    height: 24px;
+    border-radius: var(--sumi-radius-sm);
+    background: var(--sumi-surface);
+    border: 2px solid var(--sumi-accent-ink);
+    cursor: ew-resize;
+  }
+
+  &:focus-visible::-webkit-slider-thumb {
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &:focus-visible::-moz-range-thumb {
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &:disabled::-webkit-slider-thumb {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sumi-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-1);
+  font-size: var(--sumi-text-sm);
+  color: var(--sumi-text-2);
+}
+
+.legend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend__value {
+  font-weight: 600;
+  color: var(--sumi-text);
+  font-variant-numeric: tabular-nums;
+}
