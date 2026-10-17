@@ -1,6 +1,10 @@
 import { Component, input, output, signal } from '@angular/core';
 import { SumiIcon } from 'sumi-ui/core';
-import { SumiButtonDirective, SumiSubmitOnEnterDirective, SumiTextareaDirective } from 'sumi-ui/forms';
+import {
+  SumiButtonDirective,
+  SumiSubmitOnEnterDirective,
+  SumiTextareaDirective,
+} from 'sumi-ui/forms';
 import {
   SumiBadge,
   SumiFocusModeDirective,
@@ -9,13 +13,25 @@ import {
   SumiShellFocusActionsDirective,
   SumiSidePanel,
 } from 'sumi-ui/layout';
-import { SumiReadingText, type SumiReadingWord, type SumiReadingWordActivateEvent } from 'sumi-ui/practice';
-import type { ChatMessage, ReadingTextData, WordActionKind, WordAnswer, WordDetails } from './reading.types';
+import {
+  SumiReadingText,
+  SumiSessionBar,
+  SumiSessionBarActionLabelDirective,
+  type SumiReadingWord,
+  type SumiReadingWordActivateEvent,
+} from 'sumi-ui/practice';
+import type {
+  ChatMessage,
+  ReadingTextData,
+  WordActionKind,
+  WordAnswer,
+  WordDetails,
+} from './reading.types';
 
 /**
- * The reading screen itself: focus mode, the session bar (timer/pause/
- * chat) in the shell header, the text, and the word lookup / chat
- * overlays. Fully controlled — `selectedWord`/`chatOpen`/`paused` etc. all
+ * The reading screen itself: focus mode, `sumi-session-bar` (timer,
+ * pause and the projected chat action) in the shell header, the text, and
+ * the word lookup / chat overlays. Fully controlled — `selectedWord`/`chatOpen`/`paused` etc. all
  * come from outside, so the host page (#9+) owns the actual session state;
  * this component only renders it and reports interactions.
  *
@@ -42,6 +58,8 @@ import type { ChatMessage, ReadingTextData, WordActionKind, WordAnswer, WordDeta
     SumiShellFocusActionsDirective,
     SumiIcon,
     SumiButtonDirective,
+    SumiSessionBar,
+    SumiSessionBarActionLabelDirective,
     SumiReadingText,
     SumiPopover,
     SumiPopoverHeader,

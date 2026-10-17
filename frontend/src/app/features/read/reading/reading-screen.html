@@ -1,51 +1,25 @@
 <div sumiFocusMode class="layout">
-  <!--
-    `sumi-session-bar` is built around a quiz's answered/correct/accuracy —
-    none of which this screen has. Rather than force-fit it (and its
-    hardcoded "End session" button) onto a reading session, this registers
-    its own bar in the same focus-actions slot: elapsed time, pause/resume,
-    and the furigana toggle. A candidate for its own sumi-ui issue once this
-    design is approved.
-  -->
-  <ng-template sumiShellFocusActions>
-    <div class="session-bar">
-      <span class="timer sumi-tabular" aria-label="Elapsed time">{{ elapsedLabel() }}</span>
-
-      <!-- Below 720px: one compact row of icon-only buttons so the header
-           never wraps onto several lines and pushes the brand around. -->
-      <div class="compact-actions">
-        <button
-          type="button"
-          class="icon-btn"
-          [attr.aria-label]="paused() ? 'Resume' : 'Pause'"
-          [attr.aria-pressed]="paused()"
-          title="{{ paused() ? 'Resume' : 'Pause' }}"
-          (click)="pauseToggle.emit()"
-        >
-          <span aria-hidden="true">{{ paused() ? '▶' : '❚❚' }}</span>
-        </button>
-        <button
-          type="button"
-          class="icon-btn"
-          aria-label="Ask about this text"
-          title="Ask about this text"
-          (click)="chatToggle.emit()"
-        >
-          <sumi-icon name="chat" />
-        </button>
-      </div>
-
-      <!-- From 720px up: the same actions with their text labels. -->
-      <div class="full-actions">
-        <button type="button" sumiButton variant="ghost" size="sm" (click)="pauseToggle.emit()">
-          {{ paused() ? 'Resume' : 'Pause' }}
-        </button>
-        <button type="button" sumiButton variant="ghost" size="sm" (click)="chatToggle.emit()">
-          Ask about this text
-        </button>
-      </div>
-    </div>
-  </ng-template>
+  <sumi-session-bar
+    *sumiShellFocusActions
+    [elapsed]="elapsedLabel()"
+    [showPause]="true"
+    [paused]="paused()"
+    [showEndSession]="false"
+    (pauseToggle)="pauseToggle.emit()"
+  >
+    <button
+      type="button"
+      class="chat-action"
+      sumiSessionBarActions
+      aria-label="Ask about this text"
+      title="Ask about this text"
+      [attr.aria-pressed]="chatOpen()"
+      (click)="chatToggle.emit()"
+    >
+      <sumi-icon name="chat" />
+      <span sumiSessionBarActionLabel>Ask about this text</span>
+    </button>
+  </sumi-session-bar>
 
   <div class="columns">
     <div class="text-column">
@@ -75,7 +49,9 @@
         @if (paused()) {
           <div class="pause-overlay">
             <p>Paused</p>
-            <button type="button" sumiButton variant="primary" (click)="pauseToggle.emit()">Resume</button>
+            <button type="button" sumiButton variant="primary" (click)="pauseToggle.emit()">
+              Resume
+            </button>
           </div>
         }
       </div>
@@ -128,7 +104,11 @@
     </sumi-side-panel>
   </div>
 
-  <sumi-popover [open]="selectedWord() !== null" (openChange)="onPopoverOpenChange($event)" [anchor]="anchorEl()">
+  <sumi-popover
+    [open]="selectedWord() !== null"
+    (openChange)="onPopoverOpenChange($event)"
+    [anchor]="anchorEl()"
+  >
     <!-- Each slot needs its own @if with exactly one root node, or Angular
          cannot tell which node the slot selector should match (NG8011) —
          hence three separate blocks on the same `selectedWord()` guard
@@ -171,7 +151,13 @@
     @if (selectedWord(); as details) {
       <div sumiPopoverActions class="word-actions">
         @for (actionOption of details.actions; track actionOption.kind) {
-          <button type="button" sumiButton variant="secondary" size="sm" (click)="wordAction.emit(actionOption.kind)">
+          <button
+            type="button"
+            sumiButton
+            variant="secondary"
+            size="sm"
+            (click)="wordAction.emit(actionOption.kind)"
+          >
             {{ actionOption.label }}
             <span class="word-actions__weight">+{{ actionOption.weight }}</span>
           </button>

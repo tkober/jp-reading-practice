@@ -2,40 +2,19 @@
   display: block;
 }
 
-.session-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--sumi-space-2);
-  // Never wraps: below 720px the icon-only row keeps this to a handful of
-  // small, fixed-size buttons that always fit next to the timer and brand.
-  flex-wrap: nowrap;
-}
-
-.timer {
-  font-size: var(--sumi-text-md);
-  font-weight: 600;
-  min-width: 3em;
-  flex-shrink: 0;
-}
-
-.compact-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sumi-space-1);
-}
-
-.icon-btn {
+// The one action this screen projects into `sumi-session-bar`; styled like
+// the bar's own built-in pause button next to it.
+.chat-action {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
+  gap: var(--sumi-space-2);
   border: none;
   border-radius: var(--sumi-radius-sm);
   background: transparent;
   color: var(--sumi-text-2);
-  font-size: var(--sumi-text-md);
-  line-height: 1;
+  font: inherit;
+  font-size: var(--sumi-text-sm);
+  padding: var(--sumi-space-1) var(--sumi-space-2);
   cursor: pointer;
 
   sumi-icon {
@@ -55,22 +34,6 @@
   &[aria-pressed='true'] {
     color: var(--sumi-accent-ink);
     background: var(--sumi-accent-soft);
-  }
-}
-
-.full-actions {
-  display: none;
-  align-items: center;
-  gap: var(--sumi-space-3);
-}
-
-@media (min-width: 720px) {
-  .compact-actions {
-    display: none;
-  }
-
-  .full-actions {
-    display: flex;
   }
 }
 
@@ -114,7 +77,9 @@
 // only a visual-safety fallback for browsers that honour one without the
 // other.
 .text-blurrable {
-  transition: filter 0.2s ease, opacity 0.2s ease;
+  transition:
+    filter 0.2s ease,
+    opacity 0.2s ease;
 
   &--paused {
     filter: blur(8px) contrast(0.6);
