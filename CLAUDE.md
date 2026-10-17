@@ -677,6 +677,90 @@ bind; a plain DOM query for it from an injected `ElementRef` works anyway
 from an `afterRenderEffect` that reads `chatMessages`/`chatSending` so it
 reruns right after either one changes.
 
+### History / Stats / Export (issue #12)
+
+`pages/history`/`pages/stats` wire the approved presentational screens
+(`features/history/`, `features/stats/`) to three read-only endpoints,
+`api/stats.py`. Every statistic's actual maths is pure, in `app/
+stats_math.py` -- no database, unit tested on its own in `tests/
+test_stats_math.py` -- so `api/stats.py` is only the queries that turn
+`reading_sessions`/`texts`/`help_events`/`topics` rows into that module's
+`FinishedSessionStat` and back out as JSON (`tests/test_stats.py` covers
+that wiring).
+
+**`GET /api/history`** -- every session (any status), oldest first;
+`HistoryScreen.rows` (frontend) reverses the list itself to show newest
+first. A `reading`/`questions` row has `finished: false` and every number
+(`speed_chars_per_minute`/`helps_per_100_words`/`comprehension_correct`/
+`comprehension_total`) `null` -- the frontend shows "In progress" in their
+place (`pages/history/history-mapping.ts`'s `toHistorySession`). Activating
+a row navigates to `/read/<sessionId>` regardless of status -- the running
+session or its summary, whichever `screenForStatus` resolves to. A text's
+`topic_name` is its topic's own title by `topic_id` (the live FK), falling
+back to the slug stored in `params.topic_slug` (prettied, `"daily-life"` ->
+`"Daily life"`) once the topic itself is deleted (`ON DELETE SET NULL`).
+
+**`GET /api/export`** -- every row the learner has ever generated or done
+(`topics`/`texts`/`sessions`/`help_events`/`chat_messages`), flat, linked
+only by the same foreign keys the tables themselves use. Unlike every other
+response in this API, a text's `questions` here keep `answer_index` --
+this is the learner's own data, not the reading UI, so there is no reason
+to withhold it. The History page's "Export JSON" button downloads the
+response as `jp-reading-practice-<today>.json` via a `Blob` + object URL
+(`pages/history/history.ts`'s `exportData`, revoked right after the click).
+
+**`GET /api/stats`** -- `summary` (and every series/bar/table below) is
+`null`/empty together under `stats_math.STATS_MIN_SESSIONS` (3) finished
+sessions, the existing empty state, never a partial page. Every constant
+below is named and documented in `stats_math.py`, not repeated here --
+only what each statistic *means*:
+
+- **Speed** (字/min, `sumi-stat-tile`): median over the last 10 finished
+  sessions (`SPEED_SAMPLE_SESSIONS`). Its delta is the *mean* over the last
+  30 days vs. the 30 days before that, as a signed percent
+  (`DELTA_WINDOW_DAYS`) -- `null` when either window has no finished
+  session, never a divide-by-zero.
+- **Helps/100 words** and **comprehension**: both over the last 10 finished
+  sessions (`HELPS_SAMPLE_SESSIONS`) -- helps is that sample's median (same
+  shape as speed), comprehension is *pooled* (total correct answers / total
+  questions across the sample), never an average of per-session
+  percentages, so one bad session does not get the same vote as one with
+  three times as many questions.
+- **Two trend charts** (speed, helps/100): the last 30 finished sessions
+  (`SERIES_SAMPLE_SESSIONS`), oldest left, x label the session's
+  `finished_at` day.
+- **Reading level** (concept: "highest JLPT mix a learner reads
+  comfortably"): a *text's* own level (`stats_math.text_level`) is the
+  highest (hardest) JLPT level with a measured share >=
+  `LEVEL_SHARE_THRESHOLD` (10%) in its `metrics.jlpt_mix`, N5 when none
+  clears that bar. Per level, the last 5 finished sessions at that level
+  (`READING_LEVEL_SAMPLE_SESSIONS`, needing at least 3,
+  `READING_LEVEL_MIN_SESSIONS`) are **comfortable** when their median
+  helps/100 is at or under 5 (`READING_LEVEL_HELPS_MAX`) *and* their pooled
+  comprehension is at or above 80% (`READING_LEVEL_COMPREHENSION_MIN`), or
+  **with help** when comprehension clears that bar but helps does not.
+  `readingLevel` is the highest level found comfortable (`"—"` when none
+  is yet); `readingLevelDetail` is `"comfortable"`, plus the next *higher*
+  (harder) level's own "with help" status when it has one (e.g.
+  `"comfortable · N3 with help"`) -- or, with no comfortable level at all,
+  `"with help at <highest with-help level>"`, or `"not enough sessions per
+  level yet"` when nothing qualifies either way (including a level with
+  enough sessions that is simply struggling -- comprehension under 80% --
+  which this message does not distinguish from "no data yet"; a known
+  simplification, see `stats_math.reading_level`'s own docstring).
+- **Speed by style** and **speed by topic** (two bar charts, the second a
+  new section under the first): median 字/min per group
+  (`stats_math.group_median_speed`), groups with >= 1 session, over *every*
+  finished session (no recency window, unlike the headline numbers above).
+  Style groups are ordered casual/polite/formal; topic groups
+  alphabetically.
+- **Problem words**: lemmas looked up (`word_lookup`) or explained
+  (`explain`) in at least 2 different texts (`PROBLEM_WORD_MIN_TEXTS`),
+  most-looked-up-first, top 20 (`PROBLEM_WORD_TOP_N`) -- reading is the
+  lemma's own reading (never the surface's), meaning the first JMdict
+  gloss, both resolved from the first `help_events` row seen for that
+  lemma.
+
 ## Sumi UI
 
 `frontend/sumi-ui` is a git submodule (`tkober/sumi-ui`, shared with the
@@ -767,9 +851,6 @@ HTTP 421.
 
 ## Known gaps
 
-- History and Stats are still placeholder pages -- issue #12 and later give
-  them something real to show, built on the `reading_sessions`/`help_events`
-  tables issue #9 added.
 - No partial-sentence selection ("Teilsatz per Markieren") for Translate/
   Explain grammar -- a candidate follow-up, deliberately left out of issue
   #10 because a long-press already peeks the reading on the phone, and a
