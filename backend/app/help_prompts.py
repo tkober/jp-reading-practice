@@ -1,14 +1,15 @@
-"""Prompts for the three LLM helps (issue #10): Explain word, Translate
-sentence, Explain grammar -- the word popover's action buttons.
+"""Prompts for the LLM helps: Explain word, Translate sentence, Explain
+grammar (the word popover's action buttons, issue #10) and the tutor chat
+(issue #11).
 
 Same fixed-frame spirit as `prompts.py`'s generation frame: `_ROLE` is one
-role description shared by all three, and each builder always gives the
-model the *whole* text as context, plus the specific target (a word or the
-sentence containing it) the learner tapped on -- never just the target in
-isolation, since "this sentence"/"in this sentence" phrasing in the
-question only makes sense with the surrounding text in view, and a
-generated text is short enough that sending it whole costs nothing worth
-trimming for.
+role description shared by all of them, and every builder always gives the
+model the *whole* text as context, plus the specific target (a word, the
+sentence containing it, or -- for the chat -- the conversation so far) the
+learner is asking about -- never just the target in isolation, since "this
+sentence"/"in this sentence" phrasing in the question only makes sense with
+the surrounding text in view, and a generated text is short enough that
+sending it whole costs nothing worth trimming for.
 
 Each answer is capped in words (not enforced in code -- the model is simply
 asked to keep to it, same spirit as the length target in `prompts.py`'s
@@ -18,6 +19,8 @@ in `tests/test_help_prompts.py`.
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
 
 _ROLE = """You are a patient, encouraging Japanese tutor for an English-speaking
 learner who is reading a short text in Japanese. You are helping them with
@@ -95,3 +98,66 @@ pattern) -- not a word-by-word breakdown of everything in it. For each one,
 name the pattern and say briefly what it is doing *here*, in this sentence.
 
 At most 120 words."""
+
+
+# --- Tutor chat (issue #11) --------------------------------------------------
+
+_TUTOR_RULES = """You are chatting with the learner about the text above, one question at a
+time. Answer in plain English, as short as you can while still answering the
+question -- at most 120 words, unless the learner explicitly asks for more.
+
+Never translate the whole text in one go, even if asked directly for a full
+translation -- offer to go through it sentence by sentence instead, and give
+the first sentence's translation right away as the start of that.
+
+Only answer questions about this text, its words, or its grammar. If asked
+something unrelated to it, reply with one short sentence steering the
+conversation back to the text, and nothing else."""
+
+
+def build_tutor_system_prompt(*, text: str) -> str:
+    """The chat's system message: the shared tutor role, the whole text, and
+    the chat-specific rules above (short answers, no one-shot translation,
+    redirect anything unrelated) -- sent once per call, same as the other
+    three helps' own frame, since a chat completion has no server-side
+    notion of "the system message I sent last time"."""
+    return f"""{_ROLE}
+
+{_context_block(text)}
+
+# Chat rules
+{_TUTOR_RULES}"""
+
+
+def focus_question(question: str, focus_sentence: str) -> str:
+    """A question about one sentence, as the model sees it."""
+    return f"About this sentence: {focus_sentence.strip()}\n\n{question.strip()}"
+
+
+def build_tutor_messages(
+    *,
+    text: str,
+    history: Sequence[tuple[str, str]],
+    question: str,
+    focus_sentence: str | None = None,
+) -> list[dict[str, str]]:
+    """The full `messages` array for one tutor-chat call: the system frame
+    above, then every prior turn of this session's conversation (oldest
+    first, as `api/sessions.py`'s `_answered_history` prepares them: only
+    answered questions, each with its own focus prefix), then the new
+    question itself, prefixed with the focus sentence when there is one
+    ("About this sentence: ...").
+
+    `history` is `(role, content)` pairs, already in the order they were
+    asked -- `api/sessions.py`'s `post_chat` reads them straight from
+    `db.ChatMessage` before the new question is appended.
+    """
+    messages = [{"role": "system", "content": build_tutor_system_prompt(text=text)}]
+    for role, content in history:
+        messages.append({"role": role, "content": content})
+
+    final_question = question.strip()
+    if focus_sentence:
+        final_question = focus_question(final_question, focus_sentence)
+    messages.append({"role": "user", "content": final_question})
+    return messages

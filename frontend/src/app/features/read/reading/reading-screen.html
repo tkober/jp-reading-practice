@@ -72,7 +72,12 @@
     >
       <div class="chat-messages">
         @for (message of chatMessages(); track $index) {
-          <p class="chat-message" [class.chat-message--user]="message.role === 'user'" lang="ja">
+          <p
+            class="chat-message"
+            [class.chat-message--user]="message.role === 'user'"
+            [class.chat-message--error]="message.isError"
+            lang="ja"
+          >
             {{ message.text }}
           </p>
         }
@@ -82,6 +87,19 @@
       </div>
 
       <div sumiSidePanelFooter>
+        @if (chatFocus(); as focus) {
+          <div class="chat-focus-chip">
+            <span class="chat-focus-chip__label" lang="ja">About: {{ focus }}</span>
+            <button
+              type="button"
+              class="chat-focus-chip__clear"
+              aria-label="Clear focus"
+              (click)="chatFocusClear.emit()"
+            >
+              ×
+            </button>
+          </div>
+        }
         <textarea
           #chatInput
           sumiTextarea

@@ -7,6 +7,9 @@ import type {
   AnswerResultApi,
   AssistPayload,
   AssistResultApi,
+  ChatMessageApi,
+  ChatPayload,
+  ChatResultApi,
   FinishReadingPayload,
   HelpPayload,
   HelpResultApi,
@@ -195,6 +198,24 @@ export class Api {
     return firstValueFrom(
       this.http.post<AssistResultApi>(`/api/sessions/${id}/assist`, payload),
     ).catch(rethrow);
+  }
+
+  /**
+   * The tutor chat (issue #11). `chatHistory` is what a reload replays into
+   * the panel; `sendChat` stores the user's message and asks for an
+   * answer in the same request -- the caller never sees the two halves
+   * separately (there is no "pending" shape the backend itself reports,
+   * `chatSending` on the page is purely a local "waiting for this
+   * promise" flag).
+   */
+  chatHistory(id: number): Promise<ChatMessageApi[]> {
+    return this.get(`/api/sessions/${id}/chat`);
+  }
+
+  sendChat(id: number, payload: ChatPayload): Promise<ChatResultApi> {
+    return firstValueFrom(this.http.post<ChatResultApi>(`/api/sessions/${id}/chat`, payload)).catch(
+      rethrow,
+    );
   }
 
   finishReading(id: number, payload: FinishReadingPayload): Promise<SessionOutApi> {

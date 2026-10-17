@@ -312,15 +312,16 @@ question` for the comprehension questions, `sumi-tile-picker` for the
 topic grid and `sumi-share-slider` for the JLPT mix. The word popover
 anchors on `wordActivated`'s `element` (sumi-ui#108), and the session bar's
 chat action takes its look from `[sumiSessionBarAction]`. Issue #9 added two
-more optional inputs so these components stay presentational while the
+more optional inputs so these components stayed presentational while the
 word popover's action buttons (#10) and the session bar's chat action
-(#11) do not exist yet: `ReadingScreen.chatEnabled` (default `true`, so
-every existing `/preview/reading*` route is unaffected; `/read/:sessionId`
-passes `false`) and `WordDetails.actions` (now optional -- an absent/empty
-list simply renders no action buttons). `GateScreen.kanjiTrainerErrorNote`
-(also new, also optional, default `null`) follows the same pattern for the
-one banner the gate needed that the approved design did not have a slot
-for yet.
+(#11) did not exist yet: `ReadingScreen.chatEnabled` (default `true`, so
+every existing `/preview/reading*` route is unaffected) and
+`WordDetails.actions` (optional -- an absent/empty list simply renders no
+action buttons). `/read/:sessionId` passes `chatEnabled: true` since #11
+(see "Tutor chat" below) -- it never goes back to `false`.
+`GateScreen.kanjiTrainerErrorNote` (also new, also optional, default
+`null`) follows the same pattern for the one banner the gate needed that
+the approved design did not have a slot for yet.
 
 `core/api.ts`'s `kanjiTrainerStatus()` calls `GET /api/kanji-trainer/status`
 (see "Kanji Trainer (MCP)" above) for the Settings screen's "Test
@@ -420,18 +421,17 @@ lookup itself is still pending. `GET /api/sessions/{id}/summary`'s
 
 ### LLM helps: Explain word / Translate sentence / Explain grammar (issue #10)
 
-The word popover's three action buttons (`WORD_ACTIONS`, `pages/read/
+The word popover's first three action buttons (`WORD_ACTIONS`, `pages/read/
 read-session.ts`) -- labels and weights exactly as the approved design/
 preview fixture (`preview/fixtures/word-lookup.fixture.ts`'s own
 `WORD_ACTIONS`) show them: **Explain word** (+2), **Translate sentence**
-(+3), **Explain grammar** (+3). "Ask tutor" stays hidden (`WordActionKind`
-still carries `'tutor'` for the design, but `onWordAction` guards it away
-and the real action list never offers it) -- #11's own scope. There is also
-no partial-sentence selection ("Teilsatz per Markieren") yet: on the phone
-a long press already peeks the reading, so a text-selection gesture would
-collide with it -- a candidate follow-up, not attempted here. "Translate
-sentence"/"Explain grammar" act on the sentence *containing* the tapped
-word, not the word itself.
+(+3), **Explain grammar** (+3). Its fourth, **Ask tutor** (+3), is issue
+#11's own scope -- see "Tutor chat" below, it does not call `Api.assist()`
+at all. There is also no partial-sentence selection ("Teilsatz per
+Markieren") yet: on the phone a long press already peeks the reading, so a
+text-selection gesture would collide with it -- a candidate follow-up, not
+attempted here. "Translate sentence"/"Explain grammar" act on the sentence
+*containing* the tapped word, not the word itself.
 
 **`app/sentences.py`** is the one place that decides where a sentence
 ends: `split_sentences(paragraph_index, tokens)` takes `(token_id,
@@ -526,9 +526,12 @@ text's own `questions`; `comprehension_correct` is `null` until
 *target* in a given session -- the unique constraint on `(session_id,
 kind, target)` is the entire dedupe (`ON CONFLICT DO NOTHING`; a repeat
 returns `counted: false`, never an error). `kind` is a plain string
-column, not a DB enum, specifically so a later kind (`tutor`, issue #11)
-can be added without a schema change. `helps.py` is the one place every
-weight lives. `target` (issue #10; backfilled from the pre-existing
+column, not a DB enum, which is exactly what let `tutor` (issue #11, see
+"Tutor chat" below) arrive with no schema change here at all -- its
+`target` is simply unique per question, so the same dedupe that makes a
+repeated `explain` a no-op never actually fires for it; every question
+counts. `helps.py` is the one place every weight lives. `target` (issue
+#10; backfilled from the pre-existing
 `lemma` column, which is exactly what every row before #10 deduped on) is
 the lemma for `reading_peek`/`word_lookup`, sentence key + lemma for
 `explain`, and the sentence key (`sentences.Sentence.key`) for
@@ -571,6 +574,108 @@ over the last 5 finished sessions -- only each text's *first* finished read,
 since a re-read is faster for reasons unrelated to the reader's pace --
 falling back to a default of 150 until at least 3 exist; the setup screen's
 duration estimate and the gate's own estimate both read it.
+
+### Tutor chat (issue #11)
+
+A side panel (`sumi-side-panel`, docked on desktop, a full-height sheet on
+the phone) next to the text, opened from the session bar's "Ask about this
+text" action (`ReadingScreen.chatEnabled` is `true` from `/read/:sessionId`
+now) or from the word popover's fourth action, **Ask tutor** (+3, see "LLM
+helps" above). Context is the whole text, plus -- optionally -- the
+sentence containing whichever word "Ask tutor" was opened from. Only
+available while the session is `reading` (409 otherwise, same as every
+other reading-phase endpoint); the panel is never rendered for
+`questions`/`finished` at all (`read-session.html`'s `@switch`).
+
+**`chat_messages`** (`db.py`'s `ChatMessage`, one Alembic revision, `0005`):
+one row per turn, `role` `"user"`/`"assistant"`, a plain string column (not
+a DB enum) same spirit as `HelpEvent.kind`. `focus_sentence_key` is set
+only on a user message that carried a focus; `model`/`usage`/`cost_usd`
+only on an assistant message. No unique constraint at all -- unlike
+`help_events`, this table is the actual conversation, not a dedupe ledger;
+the chat's own counting lives entirely in `help_events` (below).
+
+**`GET /api/sessions/{id}/chat`** returns the session's whole conversation,
+oldest first -- what a reload replays into the panel. Available regardless
+of the session's own status (the panel itself is never shown outside
+`reading`, but there is no reason to 404 a read of history that still
+exists once the session moves on).
+
+**`POST /api/sessions/{id}/chat` `{content, focus_token_id?}`** ->
+`{user_message, assistant_message, counted, weight}` (`api/sessions.py`'s
+`post_chat`). `content` is validated non-empty and at most 1000 characters
+(`ChatRequest`'s own `field_validator`, stripped before storing) -- a
+violation is a plain Pydantic 422, no extra code needed. The user message
+is stored *first* and kept even if the OpenAI call then fails (409 no key,
+502 upstream, same convention as `/assist`) -- a resend is simply a new
+question, there is nothing to retry server-side. `focus_token_id` resolves
+to its sentence via `sentences.find_sentence` (issue #10's own module),
+whose key is stored on the user message and whose text is folded into the
+prompt for this one question only.
+
+**The prompt (`help_prompts.build_tutor_messages`)**: the shared tutor role
+(`_ROLE`, issue #10) plus the whole text plus chat-specific rules
+(`_TUTOR_RULES`) as the system message -- answers in plain English, at most
+120 words unless asked for more, never translate the whole text in one go
+(offer to go sentence by sentence and start with the first), redirect
+anything unrelated to the text/its words/its grammar back to it in one
+short sentence. The session's earlier *answered* questions follow as
+`user`/`assistant` turns, oldest first (`api/sessions.py`'s
+`_answered_history`): a question whose call failed stays in the panel but is
+never sent again, so a resend does not reach the model twice. Every focused
+question -- past or new -- is sent as
+`"About this sentence: <sentence>\n\n<question>"` (`focus_question`); the
+stored message keeps the raw text and the sentence key. `app/assist.py`'s `generate_chat_answer` sends this `messages` array
+as-is, sharing `generate_help_answer`'s own `_post_chat_completion`/
+`_parse_completion` (so a no-key/upstream failure is handled identically)
+and its 60s timeout -- both go through `RuntimeConfig.help_model`.
+
+**Counting**: each question is one `help_events` row, `kind: "tutor"`,
+weight 3 (`helps.py`'s `TUTOR_WEIGHT`), `target: "chat:<user message
+id>"`. Unlike a word/sentence target, this is always unique, so the
+dedupe `_log_help` shares with every other help kind never actually fires
+for `tutor` -- every question is counted, on purpose (a conversation is
+not a cacheable question, unlike the three LLM helps' own `help_answers`
+cache, which the chat never touches at all). `GET /api/sessions/{id}/
+summary`'s `helps_per_100_words` already summed every kind's weight, so
+tutor questions fold in with no code change; `assists_cost_usd` likewise
+already summed every `HelpEvent.cost_usd`, chat answers included.
+`chat_questions` (new) is the count of `tutor` help events, for a session
+screen to show later without recomputing it from the raw messages.
+
+**Frontend (`pages/read/read-session.ts`)**: `chatMessages`/`chatOpen`/
+`chatSending` signals, loaded from `Api.chatHistory()` alongside every
+session load. "Ask tutor" (`onWordAction`'s `'tutor'` branch) closes the
+word popover and opens the panel with the tapped word's sentence as the
+next question's focus, shown as a small removable chip above the composer
+(`ReadingScreen.chatFocus`/`chatFocusClear`, additive inputs/outputs, same
+pattern `chatEnabled` set) -- resolved client-side by `sentence-for-
+token.ts`'s `sentenceForToken`, a pure, unit-tested mirror of the backend's
+own `app/sentences.py` splitter, used only to show the chip immediately
+without a round trip (the backend resolves its own `focus_sentence_key`
+independently from the same `focus_token_id`, so a mismatch here could
+only ever affect this chip's display text, never counting). The focus is
+consumed -- and the chip cleared -- the moment the next question is sent,
+whether or not the answer itself succeeds; the learner's typed question is
+echoed into the thread immediately (it is what the backend actually
+stores, win or lose), and a failed question gets an inline error right
+under it (`ChatMessage.isError`, same red-text convention as the word
+popover's own `WordAnswer.isError`) rather than a page-level error -- the
+question stays in the thread, asking again is just a new question. No
+extra plumbing was needed to make typing in the chat count as reading
+activity: the existing `pointerdown`/`keydown`/... listeners are already
+on `document` (see "Active time" above), so a keystroke in the composer
+already reaches them.
+
+`ReadingScreen` also keeps the newest message scrolled into view as the
+conversation grows -- a real gap the original (issue #9) shell never hit,
+since no conversation before #11 ever grew past what fit on screen.
+`sumi-side-panel`'s own scroll container (`.sumi-side-panel__body`) is in
+*its* template, not `ReadingScreen`'s, so there is no local `viewChild` to
+bind; a plain DOM query for it from an injected `ElementRef` works anyway
+(only CSS scoping cares about that boundary, not a `querySelector`), run
+from an `afterRenderEffect` that reads `chatMessages`/`chatSending` so it
+reruns right after either one changes.
 
 ## Sumi UI
 
@@ -665,10 +770,6 @@ HTTP 421.
 - History and Stats are still placeholder pages -- issue #12 and later give
   them something real to show, built on the `reading_sessions`/`help_events`
   tables issue #9 added.
-- The session bar shows no chat action -- issue #11 (the tutor chat) wires
-  it up; `ReadingScreen.chatEnabled` is already there, just unused from
-  `/read/:sessionId` until then. The word popover's other action, "Ask
-  tutor", is the same story (`WordActionKind` still carries it).
 - No partial-sentence selection ("Teilsatz per Markieren") for Translate/
   Explain grammar -- a candidate follow-up, deliberately left out of issue
   #10 because a long-press already peeks the reading on the phone, and a

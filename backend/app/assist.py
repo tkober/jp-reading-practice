@@ -1,13 +1,19 @@
 """The LLM call behind the word popover's three helps (issue #10): Explain
-word, Translate sentence, Explain grammar.
+word, Translate sentence, Explain grammar -- and the tutor chat (issue #11).
 
 A plain chat completion, no Structured Outputs -- unlike `generation.py`'s
 forced JSON schema, there is no shape to enforce beyond "short English
-text", and the prompt's own word limits (`help_prompts.py`) do that work.
+text", and each prompt's own word limits (`help_prompts.py`) do that work.
 Reuses `generation.GenerationError`'s own status convention (409 no key,
 502 for anything upstream) since the failure modes are identical, and the
 same `httpx` + `RuntimeConfig` + `pricing.py` shape as that module's own
 OpenAI call.
+
+`generate_help_answer` (one-shot: a fixed system prompt plus a plain
+"Answer now.") and `generate_chat_answer` (a full, already-built `messages`
+array -- the tutor chat's own history) both go through the same
+`_post_chat_completion`/`_parse_completion`, so a new-key/upstream failure
+is handled identically either way.
 """
 
 from __future__ import annotations
@@ -23,16 +29,12 @@ from .runtime_config import RuntimeConfig
 TIMEOUT = 60.0
 
 
-async def _post_chat_completion(api_base: str, api_key: str, model: str, prompt: str) -> dict:
+async def _post_chat_completion(
+    api_base: str, api_key: str, model: str, messages: list[dict[str, str]]
+) -> dict:
     url = f"{api_base.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": "Answer now."},
-        ],
-    }
+    payload = {"model": model, "messages": messages}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             response = await client.post(url, json=payload, headers=headers)
@@ -64,7 +66,8 @@ def _parse_completion(body: dict) -> tuple[str, dict]:
 
 
 async def generate_help_answer(*, config: RuntimeConfig, prompt: str) -> tuple[str, CallUsage]:
-    """One plain chat completion against `RuntimeConfig.help_model`.
+    """One plain chat completion against `RuntimeConfig.help_model`: `prompt`
+    as the system message, plus a fixed "Answer now." user turn.
 
     Raises `GenerationError` (409 with no key configured, 502 for any
     upstream failure, a refusal, or an empty response).
@@ -73,7 +76,32 @@ async def generate_help_answer(*, config: RuntimeConfig, prompt: str) -> tuple[s
         raise GenerationError("No OpenAI API key is configured.", status=409)
 
     body = await _post_chat_completion(
-        config.openai_api_base, config.openai_api_key, config.help_model, prompt
+        config.openai_api_base,
+        config.openai_api_key,
+        config.help_model,
+        [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": "Answer now."},
+        ],
+    )
+    answer, usage = _parse_completion(body)
+    return answer, usage_from_response(usage)
+
+
+async def generate_chat_answer(
+    *, config: RuntimeConfig, messages: list[dict[str, str]]
+) -> tuple[str, CallUsage]:
+    """One chat completion against `RuntimeConfig.help_model` for the tutor
+    chat (issue #11): `messages` is the already-built system frame plus
+    conversation history plus the new question
+    (`help_prompts.build_tutor_messages`), sent as-is -- same error
+    convention as `generate_help_answer`.
+    """
+    if not config.openai_api_key:
+        raise GenerationError("No OpenAI API key is configured.", status=409)
+
+    body = await _post_chat_completion(
+        config.openai_api_base, config.openai_api_key, config.help_model, messages
     )
     answer, usage = _parse_completion(body)
     return answer, usage_from_response(usage)

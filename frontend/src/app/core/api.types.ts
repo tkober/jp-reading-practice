@@ -291,6 +291,37 @@ export interface AssistResultApi {
   weight: number;
 }
 
+// --- Tutor chat (issue #11) --------------------------------------------------
+
+export type ChatRoleApi = 'user' | 'assistant';
+
+/** Mirrors the backend's `ChatMessageOut`. */
+export interface ChatMessageApi {
+  id: number;
+  role: ChatRoleApi;
+  content: string;
+  focus_sentence_key: string | null;
+  model: string | null;
+  cost_usd: number | null;
+  created_at: string;
+}
+
+/** Mirrors the backend's `ChatRequest`, `POST /api/sessions/{id}/chat`'s
+ *  body -- `focus_token_id` unset for a question with no focus (opened
+ *  from the session bar rather than "Ask tutor"). */
+export interface ChatPayload {
+  content: string;
+  focus_token_id?: string;
+}
+
+/** Mirrors the backend's `ChatResult`. */
+export interface ChatResultApi {
+  user_message: ChatMessageApi;
+  assistant_message: ChatMessageApi;
+  counted: boolean;
+  weight: number;
+}
+
 export interface AnswerPayload {
   question_index: number;
   option_index: number;
@@ -321,10 +352,13 @@ export interface SessionSummaryApi {
   questions_total: number;
   active_ms: number;
   looked_up_words: LookedUpWordApi[];
-  /** Sum of this session's own assist (issue #10) generation costs -- 0 for
-   *  a cache hit. Not shown anywhere yet (History/Stats are still
-   *  placeholders, #12+); kept here so this type matches the backend. */
+  /** Sum of this session's own assist (issue #10) *and* tutor-chat (issue
+   *  #11) generation costs -- 0 for an assist cache hit (the chat never
+   *  caches). Not shown anywhere yet (History/Stats are still placeholders,
+   *  #12+); kept here so this type matches the backend. */
   assists_cost_usd: number;
+  /** Number of tutor-chat questions asked this session (issue #11). */
+  chat_questions: number;
 }
 
 /** Mirrors the backend's `ReadingPaceOut`, `GET /api/reading/pace`. */

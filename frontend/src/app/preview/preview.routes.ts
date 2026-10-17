@@ -62,6 +62,11 @@ export const previewRoutes: Routes = [
     data: { variant: 'chat' },
   },
   {
+    path: 'reading-chat-focus',
+    loadComponent: () => import('./screens/reading.preview').then((m) => m.ReadingPreview),
+    data: { variant: 'chat-focus' },
+  },
+  {
     path: 'reading-peek',
     loadComponent: () => import('./screens/reading.preview').then((m) => m.ReadingPreview),
     data: { variant: 'peek' },

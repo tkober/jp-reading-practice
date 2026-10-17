@@ -1,4 +1,12 @@
-import { Component, input, output, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterRenderEffect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { SumiIcon } from 'sumi-ui/core';
 import {
   SumiButtonDirective,
@@ -102,6 +110,15 @@ export class ReadingScreen {
   readonly chatOpen = input(false);
   readonly chatMessages = input<readonly ChatMessage[]>([]);
   readonly chatSending = input(false);
+  /**
+   * The next question's focus, already resolved to its display text (e.g.
+   * a sentence, truncated) -- `null` for no focus, shown as a small
+   * removable chip above the composer (issue #11). Opening the chat from
+   * the session bar's own action carries no focus; "Ask tutor" on a word
+   * does, until the chip is cleared (explicitly, or by the next question
+   * being sent).
+   */
+  readonly chatFocus = input<string | null>(null);
 
   readonly wordActivate = output<SumiReadingWordActivateEvent>();
   /** Forwarded straight from `SumiReadingText` — see its own doc comment. */
@@ -111,10 +128,32 @@ export class ReadingScreen {
   readonly pauseToggle = output<void>();
   readonly chatToggle = output<void>();
   readonly chatSend = output<string>();
+  readonly chatFocusClear = output<void>();
   readonly doneReading = output<void>();
 
   /** The word span `sumi-popover` anchors next to. */
   protected readonly anchorEl = signal<HTMLElement | null>(null);
+
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+
+  constructor() {
+    // Keep the newest message in view as the conversation grows --
+    // `sumi-side-panel`'s own scroll container (`.sumi-side-panel__body`)
+    // is in *its* template, not this component's, so there is no local
+    // `viewChild` to bind; a plain DOM query for it is unaffected by that
+    // boundary (only CSS scoping cares about it). `afterRenderEffect`
+    // reruns after every render that this effect's own reads were part of,
+    // so a new message/pending bubble is always scrolled to right after it
+    // paints.
+    afterRenderEffect(() => {
+      this.chatMessages();
+      this.chatSending();
+      const body = this.elementRef.nativeElement.querySelector('.sumi-side-panel__body');
+      if (body) {
+        body.scrollTop = body.scrollHeight;
+      }
+    });
+  }
 
   protected onWordActivate(event: SumiReadingWordActivateEvent): void {
     this.anchorEl.set(event.element);
