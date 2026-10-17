@@ -5,7 +5,8 @@ larger test file, `test_furigana.py`)."""
 from __future__ import annotations
 
 from app import kanji_trainer as kt
-from app.analysis import analyze, collect_lemmas
+from app.analysis import analyze, collect_lemmas, lookup_candidates
+from app.furigana import tokenize_paragraph
 from app.known_set import KnownSet
 
 
@@ -167,3 +168,83 @@ def test_collect_lemmas_is_distinct_and_tokenizer_derived() -> None:
 
     assert keys.count(("日", "ひ")) == 1
     assert ("の", "の") in keys
+
+
+def test_collect_lemmas_includes_both_candidates_for_a_fallback_prone_word() -> None:
+    """撮っ needs both (撮る, とる) and (取る, とる) batched -- see
+    `lookup_candidates` -- since only the caller holding the batch result
+    can tell, after the fact, whether the primary candidate was enough."""
+    keys = collect_lemmas("撮って")
+
+    assert ("撮る", "とる") in keys
+    assert ("取る", "とる") in keys
+
+
+# --- lookup_candidates -------------------------------------------------------
+
+
+def test_lookup_candidates_is_just_the_primary_form_when_unidic_agrees() -> None:
+    [token] = tokenize_paragraph("日")
+    assert lookup_candidates(token) == [("日", "ひ")]
+
+
+def test_lookup_candidates_adds_the_fallback_only_when_it_differs() -> None:
+    [token] = tokenize_paragraph("撮っ")
+    assert lookup_candidates(token) == [("撮る", "とる"), ("取る", "とる")]
+
+
+# --- JLPT / known-vocabulary fall back from the written base form to -------
+# --- unidic's own lemma, never the other way around ------------------------
+
+
+def test_jlpt_prefers_the_primary_candidate_over_the_fallback() -> None:
+    """撮る (the correct word) is in the lookup at N3; 取る (unidic's wrong
+    headword for this surface) must not override it even if it is also
+    present, e.g. at a different level, for the unrelated word 取る itself."""
+    known = KnownSet()
+    jlpt_lookup = {
+        ("撮る", "とる"): _jlpt("撮る", "とる", 3, {"撮": 3}),
+        ("取る", "とる"): _jlpt("取る", "とる", 5, {"取": 5}),
+    }
+
+    result = analyze("撮って", known, jlpt_lookup)
+
+    token = next(t for t in result.paragraphs[0].tokens if t.surface == "撮っ")
+    assert token.jlpt == 3
+    assert [k.model_dump() for k in token.kanji] == [{"character": "撮", "jlpt": 3, "known": False}]
+
+
+def test_jlpt_falls_back_to_the_alternate_lemma_when_the_base_form_is_unlisted() -> None:
+    """いる's own base form has no kanji breakdown to speak of; falling
+    back to unidic's 居る must not invent a kanji occurrence where the
+    surface (い) has none -- `token.kanji` stays empty regardless."""
+    known = KnownSet()
+    jlpt_lookup = {("居る", "いる"): _jlpt("居る", "いる", 5, {"居": 5})}
+
+    result = analyze("いました", known, jlpt_lookup)
+
+    token = result.paragraphs[0].tokens[0]
+    assert token.surface == "い"
+    assert token.jlpt == 5
+    assert token.kanji == []
+
+
+def test_jlpt_is_null_when_neither_candidate_is_in_the_lookup() -> None:
+    known = KnownSet()
+
+    result = analyze("撮って", known, {})
+
+    token = next(t for t in result.paragraphs[0].tokens if t.surface == "撮っ")
+    assert token.jlpt is None
+
+
+def test_known_vocabulary_matches_via_the_fallback_lemma() -> None:
+    """こと's base form has no kanji of its own -- a learner's known
+    vocabulary list, keyed by the word's dictionary headword, would know it
+    as 事, not こと."""
+    known = KnownSet(vocabulary={"事": frozenset({"こと"})})
+
+    result = analyze("ことができました", known, {})
+
+    token = next(t for t in result.paragraphs[0].tokens if t.surface == "こと")
+    assert token.known_word is True

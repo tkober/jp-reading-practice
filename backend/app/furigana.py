@@ -34,17 +34,9 @@ _KANA_MARKS = "ーゝゞヽヾ"
 
 # Where unidic's reading is defensible but not what a learner is taught: the
 # pronoun 私 is ワタクシ in the dictionary and わたし in every textbook. Keyed
-# by the whole surface, so 私立 (シリツ) is unaffected.
+# by the whole surface, so 私立 (シリツ) is unaffected. Display only -- see
+# `_base_form`'s doc comment for why this does not apply to lookups too.
 _SURFACE_READINGS = {"私": "わたし"}
-
-# Inflectable parts of speech, where unidic's own `lemma` feature is the
-# dictionary form we want for vocabulary/JLPT lookups (食べた -> 食べる).
-# Every other part of speech keeps its surface as its own lemma instead --
-# nouns do not conjugate in Japanese, so unidic's `lemma` for one is either
-# the surface again or, for many proper nouns (see `_lemma_for`'s doc
-# comment), its katakana pronunciation, which would send the wrong string to
-# both vocabulary matching and the Kanji Trainer's JLPT lookup.
-_INFLECTABLE_POS1 = {"動詞", "形容詞", "形状詞"}
 
 # Excluded from `Token.is_word`: particles, auxiliary verbs and punctuation/
 # symbols carry no vocabulary or JLPT level of their own. Numbers (名詞-数詞)
@@ -156,21 +148,51 @@ def _segments_for_word(surface: str, reading: str) -> list[RubySegment]:
     return [RubySegment(base=surface)]
 
 
-def _lemma_for(surface: str, pos1: str, feature_lemma: str | None) -> str:
-    """The dictionary form used for vocabulary/JLPT lookups.
+def _base_form(surface: str, reading: str, feature: Any) -> tuple[str, str, str | None]:
+    """The word's base/dictionary form, as `(lemma, lemma_reading, alt_lemma)`.
 
-    Only inflectable words (verbs, i-adjectives, na-adjectives) need
-    unidic's own `lemma` feature; every other part of speech keeps its
-    surface. Two things make that the right default rather than an
-    approximation: nouns do not conjugate, and unidic's `lemma` for many
-    proper nouns is their *katakana pronunciation* rather than the written
-    form -- 金沢 (the fixture title's own first word) comes back as lemma
-    "カナザワ", which would send the wrong string to both vocabulary
-    matching and `get_jlpt_levels`.
+    `lemma` is unidic's `orthBase` -- the *written* base form (行き -> 行く,
+    撮っ -> 撮る, こと -> こと) -- falling back to `surface` when unidic has
+    none (numbers, some symbols). This is deliberately **not** unidic's own
+    `lemma` feature, which is a normalised dictionary headword that often
+    writes the word differently from how it actually appears, in two ways
+    that both broke vocabulary/JLPT lookups before this function existed:
+
+    - For many common verbs, `lemma` names a *kanji* spelling nobody
+      actually writes any more: 居る for いる, 為る for する, 有る for ある,
+      無い for ない, 呉れる for くれる, 出来る for できる. `orthBase` gives
+      the modern kana spelling instead.
+    - For some words `lemma` is not even an alternate spelling of the same
+      word, but a *different* one: 撮る (surface 撮っ, "to photograph")
+      unidic's own `lemma` calls 取る ("to take") -- same reading, wrong
+      kanji, which would send the wrong text to every lookup.
+    - For many proper nouns, `lemma` is a *katakana pronunciation* rather
+      than any written form at all -- 金沢 (the fixture title's own first
+      word) comes back as lemma "カナザワ". `orthBase` is "金沢".
+
+    `lemma_reading` is `kanaBase` (the base form's own reading, not
+    `pronBase`, which carries phonetic artefacts like vowel lengthening --
+    タベル vs タベ-ル -- that do not match the plain hiragana spellings
+    JLPT lists, JMdict and the known-vocabulary set use), folded to
+    hiragana, falling back to the token's own (surface) `reading` when
+    unidic has no `kanaBase` either. `_SURFACE_READINGS` (the private-pronoun
+    override, a *display* convention) deliberately does not apply here --
+    dictionary lookups want the dictionary's own reading.
+
+    `alt_lemma` is unidic's raw `lemma` feature, returned only when it
+    differs from `lemma` above -- the second candidate `analysis.
+    lookup_candidates` tries when the written base form alone finds
+    nothing. This is what lets a kana-written word like こと (orthBase
+    "こと") still match a kanji-headword list entry (lemma "事"), without
+    reintroducing 撮る/取る's wrong-word problem: that fallback is only
+    tried, never preferred.
     """
-    if pos1 in _INFLECTABLE_POS1 and feature_lemma:
-        return feature_lemma
-    return surface
+    orth_base = getattr(feature, "orthBase", None) or surface
+    kana_base = getattr(feature, "kanaBase", None)
+    lemma_reading = to_hiragana(kana_base) if kana_base else reading
+    raw_lemma = getattr(feature, "lemma", None)
+    alt_lemma = raw_lemma if raw_lemma and raw_lemma != orth_base else None
+    return orth_base, lemma_reading, alt_lemma
 
 
 def _is_word(pos1: str, surface: str) -> bool:
@@ -181,12 +203,22 @@ def _is_word(pos1: str, surface: str) -> bool:
 
 @dataclass
 class RawToken:
-    """One morpheme, before vocabulary/JLPT annotation (see `analysis.py`)."""
+    """One morpheme, before vocabulary/JLPT annotation (see `analysis.py`).
+
+    `lemma`/`lemma_reading` are the word's written base form and its
+    reading (see `_base_form`) -- what `Token.lemma` shows and what
+    `analysis.lookup_candidates` tries first against JLPT/the dictionary/
+    the known-vocabulary set. `alt_lemma` is that same function's second
+    candidate, tried only on a miss. `reading` is unrelated to either: it is
+    always the *surface's* own reading, for ruby display.
+    """
 
     surface: str
     lemma: str
     reading: str
     pos: str
+    lemma_reading: str = ""
+    alt_lemma: str | None = None
     segments: list[RubySegment] = field(default_factory=list)
     is_word: bool = False
 
@@ -231,6 +263,7 @@ def tokenize_paragraph(text: str) -> list[RawToken]:
                 lemma=text,
                 reading="",
                 pos="UNKNOWN",
+                lemma_reading="",
                 segments=[RubySegment(base=text)],
                 is_word=False,
             )
@@ -242,17 +275,18 @@ def tokenize_paragraph(text: str) -> list[RawToken]:
         if not surface:
             continue
         pos1 = getattr(word.feature, "pos1", None) or "UNKNOWN"
-        feature_lemma = getattr(word.feature, "lemma", None)
-        lemma = _lemma_for(surface, pos1, feature_lemma)
         reading = _SURFACE_READINGS.get(
             surface, to_hiragana(getattr(word.feature, "kana", None) or "")
         )
+        lemma, lemma_reading, alt_lemma = _base_form(surface, reading, word.feature)
         tokens.append(
             RawToken(
                 surface=surface,
                 lemma=lemma,
                 reading=reading,
                 pos=pos1,
+                lemma_reading=lemma_reading,
+                alt_lemma=alt_lemma,
                 segments=_segments_for_word(surface, reading),
                 is_word=_is_word(pos1, surface),
             )

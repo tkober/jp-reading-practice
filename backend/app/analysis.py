@@ -57,10 +57,39 @@ def _jlpt_key(lemma: str, reading: str) -> tuple[str, str | None]:
     return (lemma, reading or None)
 
 
+def lookup_candidates(raw: RawToken) -> list[tuple[str, str]]:
+    """Written-form candidates to look `raw` up by in an external word list
+    keyed by written form + reading -- JLPT levels, the JMdict dictionary,
+    and the known-vocabulary match all use this same order, so none of them
+    duplicates it:
+
+    1. `(raw.lemma, raw.lemma_reading)` -- the word's own base form
+       (unidic's `orthBase`) with its own reading (`kanaBase`), e.g.
+       (行く, いく) for the surface 行き, or (撮る, とる) for 撮っ.
+    2. `(raw.alt_lemma, raw.lemma_reading)`, only when `raw.alt_lemma` is
+       set (unidic's own `lemma` feature named a different written form --
+       see `furigana._base_form`'s doc comment) -- e.g. (事, こと) for the
+       kana-written surface こと, whose own base form has no kanji to look
+       a kanji-keyed list entry up by at all.
+
+    A caller tries candidate 1 first and falls back to candidate 2 only on
+    a miss -- never the other way around, since candidate 2 can name the
+    *wrong word* for a surface like 撮っ (base form 撮る, but unidic's own
+    `lemma` there is 取る, "to take", a different verb that merely shares a
+    reading).
+    """
+    candidates = [(raw.lemma, raw.lemma_reading)]
+    if raw.alt_lemma and raw.alt_lemma != raw.lemma:
+        candidates.append((raw.alt_lemma, raw.lemma_reading))
+    return candidates
+
+
 def collect_lemmas(text: str) -> list[tuple[str, str | None]]:
     """Every distinct `(lemma, reading)` pair `analyze()` would look up for
-    `text`, for the caller to batch into one `get_jlpt_levels` call (see the
-    module docstring, and `app/api/analysis.py`).
+    `text` -- both `lookup_candidates()` entries for every token, not just
+    the preferred one, since a caller batching `get_jlpt_levels` has no
+    other chance to ask for the fallback candidate too (see the module
+    docstring, and `app/api/analysis.py`).
 
     Tokenises `text` itself rather than re-deriving it from a prior
     `analyze()` call's tokens, so a caller never has to run the tokenizer by
@@ -69,8 +98,9 @@ def collect_lemmas(text: str) -> list[tuple[str, str | None]]:
     keys: dict[tuple[str, str | None], None] = {}
     for paragraph_text in split_paragraphs(text):
         for raw in tokenize_paragraph(paragraph_text):
-            if raw.lemma:
-                keys[_jlpt_key(raw.lemma, raw.reading)] = None
+            for lemma, reading in lookup_candidates(raw):
+                if lemma:
+                    keys[_jlpt_key(lemma, reading)] = None
     return list(keys)
 
 
@@ -81,12 +111,29 @@ def _build_token(
     jlpt_lookup: Mapping[tuple[str, str | None], kt.JlptLevelResult],
 ) -> Token:
     kanji_chars = _kanji_characters(raw.lemma)
-    jlpt_result = jlpt_lookup.get(_jlpt_key(raw.lemma, raw.reading))
-    word_jlpt = jlpt_result.jlpt if jlpt_result is not None else None
+    candidates = lookup_candidates(raw)
+
+    # The per-kanji breakdown always comes from the *primary* candidate's
+    # own result, never the fallback's: `kanji_chars` is extracted from
+    # `raw.lemma`, which is exactly the text the primary candidate queried
+    # JLPT with, so its own `kanji` list lines up with `kanji_chars`
+    # character for character. The fallback candidate's text (e.g. 事 for
+    # こと) would not -- but every real case where the fallback actually
+    # wins is one where the primary (base) form has no kanji at all (いる,
+    # する, ある, ない, くれる, できる, こと -- see `furigana._base_form`),
+    # so `kanji_chars` is empty there and the question does not arise.
+    primary_result = jlpt_lookup.get(_jlpt_key(*candidates[0]))
+    word_jlpt = primary_result.jlpt if primary_result is not None else None
+    if word_jlpt is None:
+        for lemma, reading in candidates[1:]:
+            fallback_result = jlpt_lookup.get(_jlpt_key(lemma, reading))
+            if fallback_result is not None and fallback_result.jlpt is not None:
+                word_jlpt = fallback_result.jlpt
+                break
 
     kanji_jlpt: dict[str, int | None] = {}
-    if jlpt_result is not None:
-        for kanji_level in jlpt_result.kanji:
+    if primary_result is not None:
+        for kanji_level in primary_result.kanji:
             kanji_jlpt.setdefault(kanji_level.character, kanji_level.jlpt)
 
     kanji_info = [
@@ -94,11 +141,14 @@ def _build_token(
         for char in kanji_chars
     ]
 
-    known_word = known.knows_word(raw.lemma, raw.reading)
+    known_word = any(known.knows_word(lemma, reading) for lemma, reading in candidates)
 
     # No kanji, a known vocabulary match, or no reading at all (nothing to
     # put furigana on, or to test composition with) -- needs_furigana stays
-    # False in every one of those cases.
+    # False in every one of those cases. This check is about the *surface*
+    # (raw.reading, not raw.lemma_reading) -- it is asking whether the word
+    # as actually written needs a ruby reading, which is unrelated to which
+    # base form found it in a word list.
     needs_furigana = False
     if kanji_chars and not known_word and raw.reading:
         any_unknown = any(not info.known for info in kanji_info)

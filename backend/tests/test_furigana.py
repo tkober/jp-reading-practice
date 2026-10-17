@@ -21,14 +21,15 @@ def test_tokenizes_the_fixture_title_with_per_kanji_readings() -> None:
     assert [t.is_word for t in tokens] == [True, False, True, False, True]
 
 
-def test_proper_noun_lemma_falls_back_to_surface_not_unidics_katakana_lemma() -> None:
+def test_proper_noun_lemma_is_the_written_form_not_unidics_katakana_lemma() -> None:
     """unidic's own `lemma` feature for 金沢 is its katakana pronunciation
-    (カナザワ) rather than the written form -- using that for vocabulary/JLPT
-    lookups would send the wrong string to both. Nouns do not conjugate, so
-    falling back to the surface is both simpler and correct."""
+    (カナザワ) rather than the written form -- `orthBase`, which `lemma`
+    comes from since #7's review, is "金沢" regardless of part of speech."""
     tokens = fg.tokenize_paragraph("金沢")
 
     assert tokens[0].lemma == "金沢"
+    assert tokens[0].lemma_reading == "かなざわ"
+    assert tokens[0].alt_lemma == "カナザワ"
 
 
 def test_inflected_verb_lemma_is_the_dictionary_form() -> None:
@@ -36,7 +37,65 @@ def test_inflected_verb_lemma_is_the_dictionary_form() -> None:
 
     verb = next(t for t in tokens if t.surface == "食べ")
     assert verb.lemma == "食べる"
+    assert verb.lemma_reading == "たべる"
     assert verb.pos == "動詞"
+
+
+# --- base form (orthBase/kanaBase/lemma) -- see furigana._base_form -------
+
+
+def test_base_form_reading_is_not_the_inflected_surfaces_own_reading() -> None:
+    """行き's own (surface) reading is いき -- but a lookup for the base
+    form 行く needs いく, not いき, or every lookup against an external
+    word list keyed by (行く, いく) misses."""
+    [token] = fg.tokenize_paragraph("行き")
+
+    assert token.surface == "行き"
+    assert token.reading == "いき"  # the surface's own reading, for ruby
+    assert token.lemma == "行く"
+    assert token.lemma_reading == "いく"  # the base form's own reading
+    assert token.alt_lemma is None  # unidic's lemma feature agrees here
+
+
+def test_base_form_prefers_written_form_over_unidics_different_headword() -> None:
+    """撮っ (撮る, "to photograph") must not be looked up as 取る ("to
+    take") just because unidic's own `lemma` feature names that different
+    verb -- same reading, wrong word. `alt_lemma` carries it anyway (as the
+    second, fallback candidate `analysis.lookup_candidates` tries), but the
+    primary `lemma` is `orthBase`, "撮る"."""
+    [token] = fg.tokenize_paragraph("撮っ")
+
+    assert token.lemma == "撮る"
+    assert token.lemma_reading == "とる"
+    assert token.alt_lemma == "取る"
+
+
+def test_base_form_falls_back_to_the_modern_kana_spelling_not_unidics_kanji_lemma() -> None:
+    """unidic's own `lemma` for several everyday verbs is a kanji spelling
+    nobody actually writes any more (居る, 出来る) -- `orthBase` gives the
+    modern kana spelling that JLPT lists/JMdict/the known-vocabulary set
+    actually use."""
+    iru = fg.tokenize_paragraph("いました")[0]  # いる, continuative + ました
+    assert iru.surface == "い"
+    assert iru.lemma == "いる"
+    assert iru.alt_lemma == "居る"
+
+    dekiru = fg.tokenize_paragraph("できました")[0]  # できる, continuative + ました
+    assert dekiru.surface == "でき"
+    assert dekiru.lemma == "できる"
+    assert dekiru.alt_lemma == "出来る"
+
+
+def test_base_form_of_a_kana_written_noun_keeps_its_kanji_lemma_as_a_fallback() -> None:
+    """こと (base form has no kanji at all) still needs a way to match a
+    kanji-headword list entry (事) -- `alt_lemma` is that fallback, tried
+    only when the written base form alone is not found (see
+    `analysis.lookup_candidates`)."""
+    [token] = fg.tokenize_paragraph("こと")
+
+    assert token.lemma == "こと"
+    assert token.lemma_reading == "こと"
+    assert token.alt_lemma == "事"
 
 
 def test_particles_and_auxiliaries_and_punctuation_are_not_words() -> None:

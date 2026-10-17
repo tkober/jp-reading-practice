@@ -172,18 +172,39 @@ ruby-only-over-kanji splitting, okurigana alignment, whole-word fallback,
 `_SURFACE_READINGS` table and graceful `None` on a broken dictionary are
 ported here rather than re-derived -- the one real change is working per
 token rather than per transcript line, since a `Token` needs its own lemma/
-reading/part-of-speech, not just a flat ruby list. A token's `lemma` is
-unidic's own dictionary form only for inflectable words (verbs, i-/na-
-adjectives); every other part of speech keeps its surface, because nouns do
-not conjugate and unidic's `lemma` for many proper nouns is their *katakana
-pronunciation* rather than the written form -- the fixture title's own first
-word, 金沢, comes back as lemma "カナザワ", which would send the wrong
-string to both vocabulary matching and `get_jlpt_levels`.
+reading/part-of-speech, not just a flat ruby list.
+
+**A token's base form is `orthBase`, never unidic's own `lemma` feature**
+(`furigana._base_form`). `lemma` is a normalised dictionary headword that
+often does not name the word as it is actually written: a kanji spelling
+nobody uses any more for several everyday verbs (居る for いる, 出来る for
+できる, 有る/無い/呉れる/為る the same way), a katakana pronunciation
+instead of any written form for many proper nouns (金沢 -> lemma "カナザワ"),
+and, worse, sometimes a genuinely *different word* that merely shares a
+reading (撮る, "to photograph", surface 撮っ -> lemma "取る", "to take").
+`orthBase` is the modern written base form in every one of those cases
+(行く, できる, 金沢, 撮る), with `kanaBase` (not `pronBase`, which carries
+phonetic artefacts like vowel lengthening) folded to hiragana as its own
+reading -- `Token.lemma`/the reading used for every lookup below, never the
+*surface's* own reading (`Token.reading`, e.g. いき for 行き), which stays
+what it always was, for ruby display.
+
+`analysis.lookup_candidates(raw)` is the one function every external-list
+lookup (JLPT, the known-vocabulary match, and the dictionary once #9 wires
+it up) goes through: `(lemma, lemma_reading)` first, then -- only on a
+miss, never preferred -- `(alt_lemma, lemma_reading)`, unidic's own `lemma`
+feature, kept only for the cases it is still useful for: a kana-written
+word's kanji headword (こと has no kanji of its own to look a kanji-keyed
+list entry up by; its `alt_lemma` is 事) and the handful of common verbs
+above whose *modern* writing has no kanji at all but whose *older* one
+might still be what a list is keyed by. `撮る`/`取る` is exactly why the
+order is never reversed: `orthBase` is right there, and `alt_lemma` would
+send the wrong word to every list that does have 撮る in it.
 
 **The furigana rule** (`furigana.is_reading_composed`, called from
 `analysis._build_token`): a word with kanji gets furigana iff it is not a
-known vocabulary item (matched by lemma + reading, via `KnownSet.
-knows_word`) **and** (any of its kanji is unknown, or its reading cannot be
+known vocabulary item (matched via `lookup_candidates` + `KnownSet.
+knows_word`, see above) **and** (any of its kanji is unknown, or its reading cannot be
 *composed* from its kanji's own known readings). "Composed" walks the same
 kana/non-kana runs the ruby splitter uses: a kana run (okurigana) must
 appear verbatim in the reading at the right position; a kanji run's
@@ -211,11 +232,15 @@ be wrong far more often than it would be right.
 
 **JLPT levels** come from `kanji_trainer.get_jlpt_levels(url, items)`, never
 from a copy kept in this app -- `app/api/analysis.py` batches every text's
-distinct `(lemma, reading)` pairs (`analysis.collect_lemmas`) into one call
-before calling the pure `analyze()` a second time with the results (the
-first, throwaway call is only there to get the token list to collect lemmas
-from -- tokenising twice costs nothing, fugashi runs in well under a
-millisecond per sentence).
+distinct `lookup_candidates` pairs (both the primary and the fallback one,
+via `analysis.collect_lemmas`) into one call before calling the pure
+`analyze()` a second time with the results (the first, throwaway call is
+only there to get the token list to collect lemmas from -- tokenising twice
+costs nothing, fugashi runs in well under a millisecond per sentence).
+`_build_token` prefers the primary candidate's result and only reads the
+fallback's `jlpt` (never its `kanji` breakdown, which would not line up
+with `Token.kanji`'s own characters -- see `_build_token`'s comment) when
+the primary one is `null`.
 
 **Metrics** (`Metrics` in `models.py`): `characters` is kana + kanji + latin
 letters/digits in the raw text, no punctuation or whitespace -- what
