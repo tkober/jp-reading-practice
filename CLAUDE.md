@@ -309,12 +309,9 @@ it, the overlay shell itself is the library's), `sumi-side-panel` for the
 "ask about this text" chat, the extended `sumi-session-bar` for the
 reading header (elapsed/pause/chat, no "End session"), `sumi-choice-
 question` for the comprehension questions, `sumi-tile-picker` for the
-topic grid and `sumi-share-slider` for the JLPT mix. One library gap found
-along the way: `sumi-reading-text`'s `wordActivated` event carries only
-the activated word's `DOMRect`, not the element itself, which `sumi-
-popover`'s `[anchor]` input wants live (so it can re-measure on resize/
-scroll) -- `ReadingScreen.resolveAnchorElement` bridges the two via
-`document.elementFromPoint`, see its own doc comment. Issue #9 added two
+topic grid and `sumi-share-slider` for the JLPT mix. The word popover
+anchors on `wordActivated`'s `element` (sumi-ui#108), and the session bar's
+chat action takes its look from `[sumiSessionBarAction]`. Issue #9 added two
 more optional inputs so these components stay presentational while the
 word popover's action buttons (#10) and the session bar's chat action
 (#11) do not exist yet: `ReadingScreen.chatEnabled` (default `true`, so
@@ -372,16 +369,15 @@ style default on every single generation.
 `pages/read/token-mapping.ts`'s `mapApiParagraphsToReadingText` (pure,
 unit tested) turns the backend's full per-word `Token` analysis into
 `sumi-reading-text`'s lean `SumiReadingWord` (`{id, text, reading?,
-unknown?}`): no kanji at all -> no reading (nothing to peek over a kana
-word's own spelling); `needs_furigana` -> `reading` set, `unknown: true`
-(always-visible ruby); a kanji word that does not need it (known, or every
-kanji composes) -> `reading` set, `unknown` left falsy (peekable on hover/
-focus/long-press). `is_word === false` (particles, auxiliaries,
-punctuation) is deliberately **not** expressed in that mapping at all --
-`sumi-reading-text` has no notion of a non-tappable word, every span is a
-button -- so "not tappable" is enforced one layer up, in
-`ReadSessionPage.onWordTap`, from the `tokensById` map the mapping also
-returns alongside the rendered shape.
+unknown?, plain?}`): `is_word === false` (particles, auxiliaries,
+punctuation) -> `plain`, ordinary running text that is not focusable,
+tappable or peekable (sumi-ui#112); no kanji at all -> no reading (nothing
+to peek over a kana word's own spelling); `needs_furigana` -> `reading`
+set, `unknown: true` (always-visible ruby); a kanji word that does not
+need it (known, or every kanji composes) -> `reading` set, `unknown` left
+falsy (peekable on hover/focus/long-press). The mapping also returns
+`tokensById`, which `ReadSessionPage` uses to resolve a tapped or peeked
+word back to its token.
 
 **Active time** (`pages/read/active-time-tracker.ts`'s `ActiveTimeTracker`,
 unit tested) counts only while not manually paused, the document is

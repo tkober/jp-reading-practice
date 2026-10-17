@@ -16,6 +16,7 @@ import {
 import {
   SumiReadingText,
   SumiSessionBar,
+  SumiSessionBarActionDirective,
   SumiSessionBarActionLabelDirective,
   type SumiReadingWord,
   type SumiReadingWordActivateEvent,
@@ -44,10 +45,9 @@ import type {
  * peeks alike (`SumiFurigana`, still read by `SumiReadingText` directly)
  * — belongs in Settings instead, once a later issue adds it there.
  *
- * `sumi-popover`'s `anchor` input wants a live `HTMLElement`, not the
- * static `DOMRect` snapshot `SumiReadingText`'s `wordActivated` event
- * carries — see `resolveAnchorElement`'s doc comment for how this bridges
- * the two (a documented library gap, see the PR notes).
+ * The word popover anchors on the activated word's own element
+ * (`wordActivated`'s `element`, sumi-ui#108), so `sumi-popover` can
+ * re-measure it on resize and scroll.
  */
 @Component({
   selector: 'app-reading-screen',
@@ -59,6 +59,7 @@ import type {
     SumiIcon,
     SumiButtonDirective,
     SumiSessionBar,
+    SumiSessionBarActionDirective,
     SumiSessionBarActionLabelDirective,
     SumiReadingText,
     SumiPopover,
@@ -104,12 +105,11 @@ export class ReadingScreen {
   readonly chatSend = output<string>();
   readonly doneReading = output<void>();
 
-  /** The word span `sumi-popover` anchors next to — resolved from the
-   *  activated word's rect, see `onWordActivate`. */
+  /** The word span `sumi-popover` anchors next to. */
   protected readonly anchorEl = signal<HTMLElement | null>(null);
 
   protected onWordActivate(event: SumiReadingWordActivateEvent): void {
-    this.anchorEl.set(this.resolveAnchorElement(event.rect));
+    this.anchorEl.set(event.element);
     this.wordActivate.emit(event);
   }
 
@@ -132,25 +132,5 @@ export class ReadingScreen {
     }
     this.chatSend.emit(text);
     input.value = '';
-  }
-
-  /**
-   * `SumiReadingText`'s `wordActivated` event gives only the activated
-   * word's `DOMRect` (see its own doc comment) — there is no reference to
-   * the actual word `<span>` to hand `sumi-popover`'s `[anchor]` input,
-   * which needs a live `HTMLElement` so it can re-measure on resize/scroll
-   * (see that component's own doc comment). `document.elementFromPoint`
-   * at the rect's centre resolves back to it without reaching into the
-   * library's own DOM structure by class name — every word is documented
-   * as its own `role="button"` element (see `SumiReadingText`'s header
-   * comment), which is the one thing this relies on. A cleaner library
-   * fix would have `wordActivated` carry the element itself.
-   */
-  private resolveAnchorElement(rect: DOMRect): HTMLElement | null {
-    if (typeof document === 'undefined') {
-      return null;
-    }
-    const target = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    return (target as HTMLElement | null)?.closest<HTMLElement>('[role="button"]') ?? null;
   }
 }

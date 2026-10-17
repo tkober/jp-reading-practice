@@ -1,10 +1,10 @@
-import type { SumiReadingParagraph } from 'sumi-ui/practice';
+import type { SumiReadingParagraph, SumiReadingWord } from 'sumi-ui/practice';
 import type { ApiParagraph, ApiToken } from '../../core/api.types';
 
 /**
  * Maps the backend's full per-word analysis (`ApiToken`, `backend/app/
  * models.py`'s `Token`) down to `sumi-reading-text`'s own lean shape
- * (`SumiReadingWord`: `{ id, text, reading?, unknown? }`) -- issue #9's one
+ * (`SumiReadingWord`: `{ id, text, reading?, unknown?, plain? }`) -- issue #9's one
  * pure, unit-tested bridge between the two, per the brief.
  *
  * The rules (brief):
@@ -16,16 +16,13 @@ import type { ApiParagraph, ApiToken } from '../../core/api.types';
  *   `reading` set, `unknown: true`.
  * - A kanji word that does *not* need furigana (known, or every kanji
  *   composes) -> peekable ruby: `reading` set, `unknown` left `false`.
- * - `is_word === false` (particles, auxiliaries, punctuation) is NOT
- *   expressed here at all -- `sumi-reading-text` has no notion of a
- *   non-tappable word (every span is a button), so "not tappable" is an
- *   app-level decision made from `tokensById` at the point a tap is
- *   handled (`wordActivate`), not something this mapping can encode.
+ * - `is_word === false` (particles, auxiliaries, punctuation) -> `plain`:
+ *   ordinary running text, not focusable or tappable, never peeked
+ *   (sumi-ui#112).
  *
  * Returns the full token lookup (`tokensById`) alongside the rendered
- * shape precisely so the caller can make that decision, and others like
- * it (e.g. "is this token even a dictionary word to look up") -- see
- * `ReadSessionPage`.
+ * shape so the caller can resolve a tapped or peeked word back to its
+ * token -- see `ReadSessionPage`.
  */
 export interface MappedReadingText {
   paragraphs: readonly SumiReadingParagraph[];
@@ -45,18 +42,17 @@ export function mapApiParagraphsToReadingText(
   return { paragraphs: mapped, tokensById };
 }
 
-function mapToken(token: ApiToken): {
-  id: string;
-  text: string;
-  reading?: string;
-  unknown?: boolean;
-} {
-  const hasKanji = token.kanji.length > 0;
-  if (!hasKanji) {
-    return { id: token.id, text: token.surface };
+function mapToken(token: ApiToken): SumiReadingWord {
+  const word: SumiReadingWord = { id: token.id, text: token.surface };
+  if (!token.is_word) {
+    word.plain = true;
   }
+  if (token.kanji.length === 0) {
+    return word;
+  }
+  word.reading = token.reading;
   if (token.needs_furigana) {
-    return { id: token.id, text: token.surface, reading: token.reading, unknown: true };
+    word.unknown = true;
   }
-  return { id: token.id, text: token.surface, reading: token.reading };
+  return word;
 }

@@ -70,6 +70,16 @@ describe('mapApiParagraphsToReadingText', () => {
     expect(word.unknown).toBeFalsy();
   });
 
+  it('maps a non-word token (particle, punctuation) to plain running text', () => {
+    const particle = token({ id: 'p', surface: 'を', reading: 'を', is_word: false, kanji: [] });
+    const period = token({ id: 'q', surface: '。', reading: '', is_word: false, kanji: [] });
+    const { paragraphs } = mapApiParagraphsToReadingText([paragraph([particle, period])]);
+    expect(paragraphs[0]).toEqual([
+      { id: 'p', text: 'を', plain: true },
+      { id: 'q', text: '。', plain: true },
+    ]);
+  });
+
   it('keeps every token id reachable via tokensById, including non-word ones', () => {
     const particle = token({ id: 'p', surface: 'を', reading: 'を', is_word: false, kanji: [] });
     const word = token({

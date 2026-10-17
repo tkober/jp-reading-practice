@@ -2,41 +2,6 @@
   display: block;
 }
 
-// The one action this screen projects into `sumi-session-bar`; styled like
-// the bar's own built-in pause button next to it.
-.chat-action {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sumi-space-2);
-  border: none;
-  border-radius: var(--sumi-radius-sm);
-  background: transparent;
-  color: var(--sumi-text-2);
-  font: inherit;
-  font-size: var(--sumi-text-sm);
-  padding: var(--sumi-space-1) var(--sumi-space-2);
-  cursor: pointer;
-
-  sumi-icon {
-    width: 18px;
-    height: 18px;
-  }
-
-  &:hover {
-    background: var(--sumi-sunken);
-  }
-
-  &:focus-visible {
-    outline: none;
-    box-shadow: var(--sumi-focus-ring);
-  }
-
-  &[aria-pressed='true'] {
-    color: var(--sumi-accent-ink);
-    background: var(--sumi-accent-soft);
-  }
-}
-
 // Full width, no centering of its own: `sumi-side-panel` is a real flex
 // item now (not the old prototype's `position: fixed` overlay), so it
 // must dock at the *viewport's* right edge the way it did before, not at
