@@ -6,16 +6,16 @@ describe('toStatsSummary', () => {
     expect(
       toStatsSummary({
         speed_chars_per_minute: 130,
-        speed_delta_percent: 12.5,
-        helps_per_100_words: 4,
+        speed_delta_percent: 12.4,
+        helps_per_100_words: 4.15,
         comprehension_percent: 83.3,
         reading_level: 'N4',
         reading_level_detail: 'comfortable · N3 with help',
       }),
     ).toEqual({
       speedCharsPerMinute: 130,
-      speedDeltaPercent: 12.5,
-      helpsPerHundred: 4,
+      speedDeltaPercent: 12,
+      helpsPerHundred: 4.2,
       comprehensionPercent: 83.3,
       readingLevel: 'N4',
       readingLevelDetail: 'comfortable · N3 with help',

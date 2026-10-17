@@ -16,9 +16,11 @@ import type { ProblemWord, StatsSummary } from '../../features/stats/stats.types
 export function toStatsSummary(api: StatsSummaryApi): StatsSummary {
   return {
     speedCharsPerMinute: api.speed_chars_per_minute,
-    speedDeltaPercent: api.speed_delta_percent,
-    helpsPerHundred: api.helps_per_100_words,
-    comprehensionPercent: api.comprehension_percent,
+    // Rounded for the tiles: a whole percent for the delta, one decimal for
+    // helps and comprehension, like the history table.
+    speedDeltaPercent: api.speed_delta_percent == null ? null : Math.round(api.speed_delta_percent),
+    helpsPerHundred: Math.round(api.helps_per_100_words * 10) / 10,
+    comprehensionPercent: Math.round(api.comprehension_percent * 10) / 10,
     readingLevel: api.reading_level,
     readingLevelDetail: api.reading_level_detail,
   };

@@ -44,8 +44,8 @@ export class HistoryScreen {
       topic: session.topicName,
       length: session.length,
       speed: session.finished ? session.speedCharsPerMinute : IN_PROGRESS,
-      helps: session.finished ? session.helpsPerHundred : IN_PROGRESS,
-      score: session.finished ? `${session.scoreCorrect}/${session.scoreTotal}` : IN_PROGRESS,
+      helps: session.finished ? session.helpsPerHundred : '–',
+      score: session.finished ? `${session.scoreCorrect}/${session.scoreTotal}` : '–',
     })),
   );
 
