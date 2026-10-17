@@ -160,6 +160,7 @@ def _build_token(
         surface=raw.surface,
         lemma=raw.lemma,
         reading=raw.reading,
+        lemma_reading=raw.lemma_reading,
         pos=raw.pos,
         segments=raw.segments or [RubySegment(base=raw.surface)],
         jlpt=word_jlpt,

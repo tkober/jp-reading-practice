@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -111,6 +112,14 @@ class Token(BaseModel):
     surface: str
     lemma: str
     reading: str
+    #: The *lemma's* own reading (`RawToken.lemma_reading`, unidic's
+    #: `kanaBase` folded to hiragana) -- unlike `reading` above (the
+    #: surface's own reading, for ruby display), this is what issue #9's
+    #: word lookup shows and looks the dictionary up by, so a conjugated
+    #: surface (e.g. 食べました) names its dictionary form's reading
+    #: (たべる) rather than its own (たべました). Defaults to `""` so a
+    #: `texts` row stored before this field existed still deserialises.
+    lemma_reading: str = ""
     pos: str
     segments: list[RubySegment]
     jlpt: int | None = None
@@ -299,3 +308,134 @@ class TextOut(BaseModel):
     model: str
     cost_usd: float | None = None
     kanji_trainer_error: str | None = None
+
+
+# --- Reading sessions (issue #9) ---------------------------------------------
+
+SessionStatus = Literal["reading", "questions", "finished"]
+#: Only `reading_peek` is ever sent through `POST /api/sessions/{id}/helps`
+#: today -- `word_lookup` is logged by `POST .../lookups` itself, and
+#: `explain`/`translate`/`grammar`/`tutor` arrive with issue #10. The
+#: `help_events.kind` column is a plain string specifically so none of this
+#: needs a schema change later (see `db.py`'s `HelpEvent`).
+HelpKind = Literal["reading_peek"]
+
+
+class SessionCreateRequest(BaseModel):
+    text_id: int
+
+
+class SessionAnswerOut(BaseModel):
+    """One question's answer so far, as `GET /api/sessions/{id}` exposes it.
+
+    Both fields are `None` for a question not yet answered; `correct_index`
+    is populated only once `option_index` is -- the answer is never revealed
+    ahead of actually answering (brief, same spirit as `QuestionOut` leaving
+    `answer_index` out entirely).
+    """
+
+    option_index: int | None = None
+    correct_index: int | None = None
+
+
+class SessionOut(BaseModel):
+    id: int
+    text: TextOut
+    status: SessionStatus
+    started_at: datetime
+    active_ms: int
+    paused_ms: int
+    answers: list[SessionAnswerOut]
+    comprehension_correct: bool | None = None
+
+
+class SessionTimeRequest(BaseModel):
+    """`PUT /api/sessions/{id}/time`'s body -- the heartbeat's own running
+    totals, applied monotonically (never lowers the stored value, see
+    `api/sessions.py`)."""
+
+    active_ms: int
+    paused_ms: int
+
+
+class SessionTimeOut(BaseModel):
+    active_ms: int
+    paused_ms: int
+
+
+class HelpRequest(BaseModel):
+    kind: HelpKind
+    token_id: str
+
+
+class HelpResult(BaseModel):
+    """`counted=False` for a repeat of the same word/session -- a no-op,
+    not an error (brief: "a repeat is a no-op that returns `counted:
+    false`")."""
+
+    counted: bool
+    weight: int
+
+
+class LookupRequest(BaseModel):
+    token_id: str
+
+
+class WordLookupOut(BaseModel):
+    """`POST /api/sessions/{id}/lookups`'s response -- the word popover's
+    content once a lookup actually ran (as opposed to the client-side peek,
+    which never calls the backend for anything beyond `/helps`)."""
+
+    surface: str
+    lemma: str
+    #: The lemma's own reading (`Token.lemma_reading`), never the surface's.
+    reading: str
+    jlpt: int | None = None
+    meanings: list[str] = Field(default_factory=list)
+    #: e.g. "Kanji Trainer: Guru II", "Not in Kanji Trainer", or "Kanji
+    #: Trainer unavailable" -- never raises on its own (brief).
+    known_status: str
+
+
+class AnswerRequest(BaseModel):
+    question_index: int
+    option_index: int
+
+
+class AnswerResult(BaseModel):
+    correct: bool
+    correct_index: int
+
+
+class FinishReadingRequest(BaseModel):
+    active_ms: int
+    paused_ms: int
+
+
+class LookedUpWordOut(BaseModel):
+    word: str
+    reading: str
+    meaning: str
+
+
+class SessionSummaryOut(BaseModel):
+    chars_per_minute: int
+    words_per_minute: int
+    helps_per_100_words: float
+    questions_correct: int
+    questions_total: int
+    active_ms: int
+    #: In lookup order (first lookup first) -- never alphabetical or by
+    #: position in the text.
+    looked_up_words: list[LookedUpWordOut] = Field(default_factory=list)
+
+
+class ReadingPaceOut(BaseModel):
+    """`GET /api/reading/pace`'s response -- the setup screen's duration
+    estimate and the gate's own estimate are both built from this."""
+
+    chars_per_minute: int
+    source: Literal["default", "history"]
+    #: How many finished sessions the median was actually computed from
+    #: (0 when `source == "default"`).
+    sessions: int
