@@ -135,11 +135,15 @@
           <p class="word-known-status">{{ details.knownStatus }}</p>
         }
 
-        <ul class="word-meanings">
-          @for (meaning of details.meanings; track meaning) {
-            <li>{{ meaning }}</li>
-          }
-        </ul>
+        @if (details.meanings.length > 0) {
+          <ul class="word-meanings">
+            @for (meaning of details.meanings; track meaning) {
+              <li>{{ meaning }}</li>
+            }
+          </ul>
+        } @else {
+          <p class="word-note">{{ details.note ?? 'No dictionary entry.' }}</p>
+        }
 
         @if (wordAnswer(); as currentAnswer) {
           <div class="word-answer">

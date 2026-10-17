@@ -100,6 +100,12 @@ def _find_token(text_row: GeneratedText, token_id: str) -> dict | None:
     return None
 
 
+def _lemma_reading(token: dict) -> str:
+    """`Token.lemma_reading`, falling back to the surface reading for texts
+    stored before #9 added the field."""
+    return token.get("lemma_reading") or token["reading"]
+
+
 def _session_out(session_row: ReadingSession, text_row: GeneratedText) -> SessionOut:
     questions = text_row.questions
     answers_out = []
@@ -260,13 +266,13 @@ async def log_lookup(
     )
 
     config = await load_runtime_config(session)
-    entry = dictionary.lookup(token["lemma"], token["lemma_reading"])
+    entry = dictionary.lookup(token["lemma"], _lemma_reading(token))
     known_status = await _known_status(config.kanji_trainer_mcp_url, token["lemma"])
 
     return WordLookupOut(
         surface=token["surface"],
         lemma=token["lemma"],
-        reading=token["lemma_reading"],
+        reading=_lemma_reading(token),
         jlpt=token["jlpt"],
         meanings=list(entry.glosses[:3]) if entry else [],
         known_status=known_status,
@@ -310,8 +316,8 @@ async def answer_question(
     if all(answer is not None for answer in answers):
         row.status = "finished"
         row.finished_at = datetime.now(timezone.utc)
-        row.comprehension_correct = all(
-            answers[i] == questions[i]["answer_index"] for i in range(len(questions))
+        row.comprehension_correct = sum(
+            1 for i in range(len(questions)) if answers[i] == questions[i]["answer_index"]
         )
 
     await session.commit()
@@ -356,7 +362,7 @@ async def get_summary(
         if help_row.kind != "word_lookup":
             continue
         token = _find_token(text_row, help_row.token_id)
-        reading = token["lemma_reading"] if token else ""
+        reading = _lemma_reading(token) if token else ""
         entry = dictionary.lookup(help_row.lemma, reading) if token else None
         meaning = entry.glosses[0] if entry and entry.glosses else ""
         looked_up_words.append(LookedUpWordOut(word=help_row.lemma, reading=reading, meaning=meaning))
@@ -378,10 +384,18 @@ async def get_pace(session: AsyncSession = Depends(get_session)) -> ReadingPaceO
     sessions, default `DEFAULT_CHARS_PER_MINUTE` until at least
     `PACE_MIN_SESSIONS` exist -- the setup screen's duration estimate and
     the gate's own estimate both read this."""
+    # Only each text's first finished read: reading the same text again is
+    # faster for reasons that say nothing about the reader's pace.
+    first_reads = (
+        select(ReadingSession.id)
+        .where(ReadingSession.status == "finished")
+        .distinct(ReadingSession.text_id)
+        .order_by(ReadingSession.text_id, ReadingSession.finished_at)
+    )
     rows = list(
         await session.scalars(
             select(ReadingSession)
-            .where(ReadingSession.status == "finished")
+            .where(ReadingSession.id.in_(first_reads))
             .order_by(ReadingSession.finished_at.desc())
             .limit(PACE_SAMPLE_SESSIONS)
         )

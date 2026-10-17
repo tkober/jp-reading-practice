@@ -228,9 +228,8 @@ class ReadingSession(Base):
     ever raises them, never lowers them); `answers` is one entry per
     question (the chosen option index, or `None` while unanswered), index-
     aligned with the text's own `questions`. `comprehension_correct` is
-    `None` until `finished`, then whether *every* question was answered
-    correctly -- the session summary's own `questions_correct`/`total`
-    carries the partial count, this is just the hanko's pass/fail signal.
+    `None` until `finished`, then the number of questions answered
+    correctly (stats read it without re-checking every answer).
     """
 
     __tablename__ = "reading_sessions"
@@ -250,7 +249,7 @@ class ReadingSession(Base):
     active_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     paused_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     answers: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
-    comprehension_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    comprehension_correct: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

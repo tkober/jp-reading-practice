@@ -40,7 +40,7 @@ def upgrade() -> None:
         sa.Column(
             "answers", postgresql.JSONB(astext_type=sa.Text()), server_default="[]", nullable=False
         ),
-        sa.Column("comprehension_correct", sa.Boolean(), nullable=True),
+        sa.Column("comprehension_correct", sa.Integer(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

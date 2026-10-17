@@ -332,12 +332,12 @@ async def test_answering_the_last_question_finishes_the_session(
     state = await client.get(f"/api/sessions/{session_id}")
     body = state.json()
     assert body["status"] == "finished"
-    assert body["comprehension_correct"] is True
+    assert body["comprehension_correct"] == 2
     assert body["answers"][0]["correct_index"] == 0
     assert body["answers"][1]["correct_index"] == 1
 
 
-async def test_a_wrong_answer_finishes_with_comprehension_correct_false(
+async def test_a_wrong_answer_lowers_comprehension_correct(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     text_row = await _create_text(session)
@@ -355,7 +355,7 @@ async def test_a_wrong_answer_finishes_with_comprehension_correct_false(
     )
 
     state = await client.get(f"/api/sessions/{session_id}")
-    assert state.json()["comprehension_correct"] is False
+    assert state.json()["comprehension_correct"] == 1
 
 
 # --- summary -----------------------------------------------------------------
@@ -418,14 +418,14 @@ async def test_pace_defaults_with_too_few_sessions(client: AsyncClient) -> None:
 async def test_pace_uses_history_once_enough_sessions_finished(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    text_row = await _create_text(session)
-    characters = text_row.analysis["metrics"]["characters"]
+    texts = [await _create_text(session) for _ in range(3)]
+    characters = texts[0].analysis["metrics"]["characters"]
 
-    # Three finished sessions at 1/2/3 minutes -> chars/min of
+    # Three finished first reads at 1/2/3 minutes -> chars/min of
     # characters*60, characters*30, characters*20 -- median is the middle one.
     import datetime as dt
 
-    for active_ms in (60_000, 120_000, 180_000):
+    for text_row, active_ms in zip(texts, (60_000, 120_000, 180_000), strict=True):
         row = ReadingSession(
             text_id=text_row.id,
             status="finished",
@@ -443,3 +443,38 @@ async def test_pace_uses_history_once_enough_sessions_finished(
     assert body["sessions"] == 3
     expected_median = round(characters / 2.0)  # the 120_000ms (2 min) session
     assert body["chars_per_minute"] == expected_median
+
+
+async def test_pace_ignores_rereads_of_the_same_text(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    import datetime as dt
+
+    now = dt.datetime.now(dt.timezone.utc)
+    texts = [await _create_text(session) for _ in range(3)]
+    characters = texts[0].analysis["metrics"]["characters"]
+    # First reads at 2 minutes each, then a fast re-read of the first text.
+    for offset, text_row in enumerate(texts):
+        session.add(
+            ReadingSession(
+                text_id=text_row.id,
+                status="finished",
+                active_ms=120_000,
+                answers=[0, 0],
+                finished_at=now + dt.timedelta(minutes=offset),
+            )
+        )
+    session.add(
+        ReadingSession(
+            text_id=texts[0].id,
+            status="finished",
+            active_ms=10_000,
+            answers=[0, 0],
+            finished_at=now + dt.timedelta(minutes=10),
+        )
+    )
+    await session.commit()
+
+    body = (await client.get("/api/reading/pace")).json()
+    assert body["sessions"] == 3
+    assert body["chars_per_minute"] == round(characters / 2.0)

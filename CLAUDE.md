@@ -429,9 +429,7 @@ finished`, driven entirely by `api/sessions.py`; `active_ms`/`paused_ms`
 are the heartbeat's own monotonic running totals; `answers` is one entry
 per question (chosen option index, or `null`), index-aligned with the
 text's own `questions`; `comprehension_correct` is `null` until
-`finished`, then whether *every* question was answered correctly (the
-hanko's pass/fail signal -- the summary's own `questions_correct`/`total`
-carries the partial count).
+`finished`, then the number of questions answered correctly.
 
 `help_events`: one row per *first* occurrence of a help kind for a given
 word in a given session -- the unique constraint on `(session_id, kind,
@@ -454,7 +452,8 @@ reading is たべました; its lemma's is たべる) -- the word lookup and the
 summary's looked-up-words list both need the lemma's reading (what the
 dictionary is keyed by), never the surface's. Defaults to `""` so a
 `texts` row stored before this field existed still deserialises (issue #8
-rows predate it; nothing re-analyzes them).
+rows predate it; nothing re-analyzes them); `api/sessions.py`'s
+`_lemma_reading` falls back to the surface reading for those rows.
 
 `POST /api/sessions/{id}/lookups`'s known-status string ("Kanji Trainer:
 Guru II" / "Not in Kanji Trainer" / "Kanji Trainer unavailable") reads
@@ -467,9 +466,10 @@ rest of this client.
 `GET /api/reading/pace` (mounted at a different prefix than the rest of
 `api/sessions.py`'s router -- see `pace_router` in that module and its
 second `include_router` call in `api/__init__.py`) is the median chars/min
-over the last 5 finished sessions, falling back to a default of 150 until
-at least 3 exist; the setup screen's duration estimate and the gate's own
-estimate both read it.
+over the last 5 finished sessions -- only each text's *first* finished read,
+since a re-read is faster for reasons unrelated to the reader's pace --
+falling back to a default of 150 until at least 3 exist; the setup screen's
+duration estimate and the gate's own estimate both read it.
 
 ## Sumi UI
 

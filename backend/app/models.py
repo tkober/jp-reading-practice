@@ -346,7 +346,8 @@ class SessionOut(BaseModel):
     active_ms: int
     paused_ms: int
     answers: list[SessionAnswerOut]
-    comprehension_correct: bool | None = None
+    #: Questions answered correctly, set once the last one is answered.
+    comprehension_correct: int | None = None
 
 
 class SessionTimeRequest(BaseModel):

@@ -252,7 +252,7 @@ export class ReadSessionPage {
     }
 
     this.selectedWordId.set(word.id);
-    this.selectedWord.set({ word: token.surface, meanings: ['Loading…'] });
+    this.selectedWord.set({ word: token.surface, meanings: [], note: 'Loading…' });
 
     this.api.lookupWord(session.id, token.id).then(
       (result) => {
@@ -263,7 +263,7 @@ export class ReadSessionPage {
           word: result.surface,
           reading: result.reading && result.reading !== result.surface ? result.reading : undefined,
           jlptLevel: result.jlpt ? `N${result.jlpt}` : undefined,
-          meanings: result.meanings.length > 0 ? result.meanings : ['(no dictionary entry)'],
+          meanings: result.meanings,
           knownStatus: result.known_status,
         });
       },
@@ -271,7 +271,8 @@ export class ReadSessionPage {
         if (this.selectedWordId() === word.id) {
           this.selectedWord.set({
             word: token.surface,
-            meanings: ['Could not look up this word.'],
+            meanings: [],
+            note: 'Could not look up this word.',
           });
         }
       },

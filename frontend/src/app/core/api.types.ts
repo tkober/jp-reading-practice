@@ -232,7 +232,7 @@ export interface SessionOutApi {
   active_ms: number;
   paused_ms: number;
   answers: SessionAnswerApi[];
-  comprehension_correct: boolean | null;
+  comprehension_correct: number | null;
 }
 
 export interface SessionTimePayload {
