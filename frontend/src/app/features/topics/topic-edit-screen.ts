@@ -1,4 +1,4 @@
-import { Component, computed, input, output } from '@angular/core';
+import { Component, computed, input, output, signal } from '@angular/core';
 import {
   SumiButtonDirective,
   SumiInputDirective,
@@ -49,10 +49,21 @@ export class TopicEditScreen {
   readonly save = output<void>();
   readonly reset = output<void>();
   readonly delete = output<void>();
+  /** "← All topics" -- back to the list. */
+  readonly back = output<void>();
 
   protected readonly styleOptions = STYLE_OPTIONS;
 
   protected readonly pageTitle = computed(() => this.draft().name || 'New topic');
+
+  /**
+   * A click on "Delete" only arms it; a second click on "Confirm" actually
+   * emits `delete`. Local, presentational state -- no API call happens
+   * here, same as jp-conversation-practice's scenario list, just inline on
+   * the one button instead of a per-row confirm (there is only one topic
+   * being edited at a time here).
+   */
+  protected readonly confirmingDelete = signal(false);
 
   protected onAddFeed(input: HTMLInputElement): void {
     const value = input.value.trim();
@@ -61,5 +72,18 @@ export class TopicEditScreen {
     }
     this.rssFeedAdd.emit(value);
     input.value = '';
+  }
+
+  protected requestDelete(): void {
+    this.confirmingDelete.set(true);
+  }
+
+  protected cancelDelete(): void {
+    this.confirmingDelete.set(false);
+  }
+
+  protected confirmDelete(): void {
+    this.confirmingDelete.set(false);
+    this.delete.emit();
   }
 }

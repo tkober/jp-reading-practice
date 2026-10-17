@@ -1,9 +1,14 @@
 <sumi-page [title]="pageTitle()" width="narrow">
-  @if (isBuiltin()) {
-    <sumi-badge [tone]="isCustomized() ? 'accent' : 'neutral'">
-      {{ isCustomized() ? 'Customized' : 'Built-in' }}
-    </sumi-badge>
-  }
+  <header class="editor-header">
+    <a class="back" role="button" tabindex="0" (click)="back.emit()" (keydown.enter)="back.emit()">
+      ← All topics
+    </a>
+    @if (isBuiltin()) {
+      <sumi-badge [tone]="isCustomized() ? 'accent' : 'neutral'">
+        {{ isCustomized() ? 'Customized' : 'Built-in' }}
+      </sumi-badge>
+    }
+  </header>
 
   <sumi-card>
     <label class="field">
@@ -23,7 +28,7 @@
         sumiInput
         class="glyph-input"
         lang="ja"
-        maxlength="2"
+        maxlength="8"
         [value]="draft().glyph"
         (input)="glyphChange.emit($any($event.target).value)"
       />
@@ -79,7 +84,19 @@
       </button>
     }
     @if (canDelete()) {
-      <button type="button" sumiButton variant="ghost" (click)="delete.emit()">Delete</button>
+      @if (confirmingDelete()) {
+        <span class="delete-confirm">
+          <span class="delete-confirm-label">Delete this topic?</span>
+          <button type="button" sumiButton variant="ghost" size="sm" (click)="cancelDelete()">
+            Cancel
+          </button>
+          <button type="button" sumiButton variant="danger" size="sm" (click)="confirmDelete()">
+            Confirm
+          </button>
+        </span>
+      } @else {
+        <button type="button" sumiButton variant="ghost" (click)="requestDelete()">Delete</button>
+      }
     }
     <button type="button" sumiButton variant="primary" (click)="save.emit()">Save</button>
   </div>

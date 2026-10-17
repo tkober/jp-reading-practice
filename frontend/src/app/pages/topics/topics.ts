@@ -229,12 +229,14 @@ export class TopicsPage {
     );
   }
 
+  /**
+   * Called from the editor's `delete` output, which only fires after its
+   * own in-page two-step confirmation ("Delete this topic?" -> Confirm) --
+   * no confirmation here, that would be a second, redundant prompt.
+   */
   deleteTopic(): void {
     const topic = this.editingTopic();
     if (!topic || this.busy()) {
-      return;
-    }
-    if (!confirm(`Delete "${topic.title}"? This cannot be undone.`)) {
       return;
     }
     this.busy.set(true);

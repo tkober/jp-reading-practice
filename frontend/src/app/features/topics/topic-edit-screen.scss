@@ -1,3 +1,18 @@
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sumi-space-3);
+  margin-bottom: var(--sumi-space-4);
+}
+
+.back {
+  color: var(--sumi-accent-ink);
+  cursor: pointer;
+  font-size: var(--sumi-text-sm);
+  width: fit-content;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -15,7 +30,7 @@
 }
 
 .glyph-input {
-  max-width: 80px;
+  max-width: 160px;
   font-size: var(--sumi-text-lg);
 }
 
@@ -64,7 +79,19 @@ textarea {
 
 .actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--sumi-space-2);
   margin-top: var(--sumi-space-4);
+}
+
+.delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-2);
+}
+
+.delete-confirm-label {
+  font-size: var(--sumi-text-sm);
+  color: var(--sumi-text-2);
 }

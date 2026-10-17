@@ -20,6 +20,11 @@
     />
   }
 } @else {
+  @if (saveMessage(); as message) {
+    <div class="topics-editor-banner">
+      <sumi-banner [tone]="saveState() === 'error' ? 'error' : 'success'">{{ message }}</sumi-banner>
+    </div>
+  }
   <app-topic-edit-screen
     [draft]="draft()"
     [showRssFeeds]="showRssFeeds()"
@@ -35,13 +40,6 @@
     (save)="save()"
     (reset)="resetToBuiltin()"
     (delete)="deleteTopic()"
+    (back)="backToList()"
   />
-  <div class="topics-editor-footer">
-    <a class="back" role="button" tabindex="0" (click)="backToList()" (keydown.enter)="backToList()">
-      ← All topics
-    </a>
-    @if (saveMessage(); as message) {
-      <sumi-banner [tone]="saveState() === 'error' ? 'error' : 'success'">{{ message }}</sumi-banner>
-    }
-  </div>
 }
