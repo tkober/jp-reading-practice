@@ -6,7 +6,7 @@ import {
   SumiTextareaDirective,
   type SumiSegmentedOption,
 } from 'sumi-ui/forms';
-import { SumiCard, SumiPage } from 'sumi-ui/layout';
+import { SumiBadge, SumiCard, SumiPage } from 'sumi-ui/layout';
 import type { TopicDefaultStyle, TopicDraft } from './topics.types';
 
 const STYLE_OPTIONS: SumiSegmentedOption<TopicDefaultStyle>[] = [
@@ -22,6 +22,7 @@ const STYLE_OPTIONS: SumiSegmentedOption<TopicDefaultStyle>[] = [
   imports: [
     SumiPage,
     SumiCard,
+    SumiBadge,
     SumiInputDirective,
     SumiTextareaDirective,
     SumiSegmentedControl,
@@ -33,6 +34,11 @@ export class TopicEditScreen {
   readonly draft = input.required<TopicDraft>();
   /** Only the "Current events" topic has RSS feeds. */
   readonly showRssFeeds = input(false);
+  /** Shown only for a saved, non-built-in topic -- built-ins are reset, not deleted. */
+  readonly canDelete = input(false);
+  /** Whether a built-in topic has been edited -- shows "customized" instead of "built-in". */
+  readonly isBuiltin = input(false);
+  readonly isCustomized = input(false);
 
   readonly nameChange = output<string>();
   readonly glyphChange = output<string>();
@@ -42,6 +48,7 @@ export class TopicEditScreen {
   readonly rssFeedRemove = output<number>();
   readonly save = output<void>();
   readonly reset = output<void>();
+  readonly delete = output<void>();
 
   protected readonly styleOptions = STYLE_OPTIONS;
 

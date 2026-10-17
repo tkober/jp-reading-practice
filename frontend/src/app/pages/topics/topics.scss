@@ -1,0 +1,15 @@
+.topics-editor-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-3);
+  max-width: 640px;
+  margin: 0 auto var(--sumi-space-6);
+  padding: 0 var(--sumi-space-4);
+}
+
+.back {
+  color: var(--sumi-accent-ink);
+  cursor: pointer;
+  font-size: var(--sumi-text-sm);
+  width: fit-content;
+}

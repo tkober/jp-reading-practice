@@ -1,4 +1,10 @@
 <sumi-page [title]="pageTitle()" width="narrow">
+  @if (isBuiltin()) {
+    <sumi-badge [tone]="isCustomized() ? 'accent' : 'neutral'">
+      {{ isCustomized() ? 'Customized' : 'Built-in' }}
+    </sumi-badge>
+  }
+
   <sumi-card>
     <label class="field">
       <span class="field-label">Name</span>
@@ -67,7 +73,14 @@
   </sumi-card>
 
   <div class="actions">
-    <button type="button" sumiButton variant="ghost" (click)="reset.emit()">Reset</button>
+    @if (isBuiltin()) {
+      <button type="button" sumiButton variant="ghost" (click)="reset.emit()">
+        Reset to built-in
+      </button>
+    }
+    @if (canDelete()) {
+      <button type="button" sumiButton variant="ghost" (click)="delete.emit()">Delete</button>
+    }
     <button type="button" sumiButton variant="primary" (click)="save.emit()">Save</button>
   </div>
 </sumi-page>

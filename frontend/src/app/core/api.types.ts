@@ -61,3 +61,39 @@ export interface KanjiTrainerStatus {
   known_vocabulary: number | null;
   error: string | null;
 }
+
+// --- Topics (issue #8) --------------------------------------------------
+
+export type TopicStyleApi = 'casual' | 'polite' | 'formal';
+
+/** Mirrors the backend's `TopicOut` (`backend/app/models.py`). */
+export interface TopicApi {
+  id: number;
+  slug: string;
+  title: string;
+  glyph: string;
+  prompt: string;
+  default_style: TopicStyleApi;
+  feed_urls: string[];
+  sort_order: number;
+  is_builtin: boolean;
+  is_customized: boolean;
+}
+
+/** Mirrors the backend's `TopicCreate`. */
+export interface TopicCreatePayload {
+  title: string;
+  glyph: string;
+  prompt: string;
+  default_style: TopicStyleApi;
+  feed_urls: string[];
+}
+
+/** Mirrors the backend's `TopicUpdate` -- every field optional. */
+export interface TopicUpdatePayload {
+  title?: string;
+  glyph?: string;
+  prompt?: string;
+  default_style?: TopicStyleApi;
+  feed_urls?: string[];
+}
