@@ -1,7 +1,8 @@
-import { Component, input, output } from '@angular/core';
+import { Component, inject, input, output } from '@angular/core';
+import { SumiIcon } from 'sumi-ui/core';
 import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiFocusModeDirective, SumiShellFocusActionsDirective } from 'sumi-ui/layout';
-import { SumiFuriganaToggle } from 'sumi-ui/practice';
+import { SumiFurigana, SumiFuriganaToggle } from 'sumi-ui/practice';
 import { SidePanel, type ChatMessage } from '../../../proto/side-panel/side-panel';
 import { TappableRubyText, type WordActivateEvent } from '../../../proto/tappable-ruby-text/tappable-ruby-text';
 import {
@@ -27,6 +28,7 @@ import type { ReadingTextData } from './reading.types';
   imports: [
     SumiFocusModeDirective,
     SumiShellFocusActionsDirective,
+    SumiIcon,
     SumiButtonDirective,
     SumiFuriganaToggle,
     TappableRubyText,
@@ -36,6 +38,13 @@ import type { ReadingTextData } from './reading.types';
   host: { class: 'app-reading-screen' },
 })
 export class ReadingScreen {
+  /** Injected directly (rather than only used through `sumi-furigana-
+   *  toggle`) for the phone header's icon-only toggle button below —
+   *  `sumi-furigana-toggle` always renders its own "Furigana" text label,
+   *  which has nowhere to go in a one-row compact header. The real
+   *  component is still used at ≥720px (see the template). */
+  protected readonly furigana = inject(SumiFurigana);
+
   readonly text = input.required<ReadingTextData>();
   readonly elapsedLabel = input('0:00');
   readonly paused = input(false);

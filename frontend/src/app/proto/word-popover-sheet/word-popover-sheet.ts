@@ -8,7 +8,19 @@
 // on native `<dialog>`) but nothing anchored to an arbitrary element, and
 // nothing that turns into a bottom sheet on narrow screens, so this is its
 // own overlay rather than a `sumi-dialog` instance.
-import { Component, HostListener, computed, input, output, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  afterRenderEffect,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { NgStyle } from '@angular/common';
 import { SUMI_KEYS, SumiIcon, injectHotkey } from 'sumi-ui/core';
 import { SumiButtonDirective } from 'sumi-ui/forms';
@@ -25,12 +37,20 @@ export interface WordActionOption {
 
 export interface WordDetails {
   word: string;
-  reading: string;
+  /** Omitted (or equal to `word`) for a kana-only word, where repeating it
+   *  as a separate reading line would say nothing new. */
+  reading?: string;
   jlptLevel?: string;
   meanings: readonly string[];
-  /** e.g. "Kanji Trainer: Guru II" or "Not in Kanji Trainer". */
-  knownStatus: string;
+  /** e.g. "Kanji Trainer: Guru II" or "Not in Kanji Trainer" — only shown
+   *  for `kind: 'word'` (the default); a grammar pattern has no Kanji
+   *  Trainer status of its own. */
+  knownStatus?: string;
   actions: readonly WordActionOption[];
+  /** `'word'` (default) looks up a single word, with a JLPT badge and
+   *  Kanji Trainer status; `'grammar'` looks up a grammar pattern instead
+   *  — shown with a "Grammar" badge and no Kanji Trainer line. */
+  kind?: 'word' | 'grammar';
 }
 
 export interface WordAnswer {
@@ -67,6 +87,12 @@ export class WordPopoverSheet {
   private readonly viewportWidth = signal(this.readViewportWidth());
   private readonly viewportHeight = signal(this.readViewportHeight());
 
+  /** The rendered panel, measured so `popoverStyle` can tell whether it
+   *  actually fits below the word before committing to that placement —
+   *  see the class doc comment on why this exists at all. */
+  private readonly panelRef = viewChild<ElementRef<HTMLElement>>('panelRef');
+  private readonly panelHeight = signal(0);
+
   constructor() {
     injectHotkey({
       keys: SUMI_KEYS.escape,
@@ -75,6 +101,22 @@ export class WordPopoverSheet {
       enabled: () => !!this.word(),
       handler: () => this.close.emit(),
     });
+
+    const destroyRef = inject(DestroyRef);
+    let observer: ResizeObserver | undefined;
+    afterRenderEffect(() => {
+      const element = this.panelRef()?.nativeElement;
+      observer?.disconnect();
+      observer = undefined;
+      if (!element || typeof ResizeObserver === 'undefined') {
+        this.panelHeight.set(0);
+        return;
+      }
+      this.panelHeight.set(element.offsetHeight);
+      observer = new ResizeObserver(() => this.panelHeight.set(element.offsetHeight));
+      observer.observe(element);
+    });
+    destroyRef.onDestroy(() => observer?.disconnect());
   }
 
   @HostListener('window:resize')
@@ -84,16 +126,33 @@ export class WordPopoverSheet {
   }
 
   /** Desktop only — the popover's own CSS ignores this below the 720px
-   *  breakpoint, where it renders as a full-width bottom sheet instead. */
+   *  breakpoint, where it renders as a full-width bottom sheet instead.
+   *  Prefers opening below the word (reading order, least surprising);
+   *  flips above only once the measured panel genuinely does not fit in
+   *  the space below, and either way never overlaps the word itself —
+   *  the gap is always kept on the side facing the word. */
   protected readonly popoverStyle = computed(() => {
     const anchor = this.anchorRect();
     if (!anchor) {
       return {};
     }
     const width = 320;
-    const maxLeft = Math.max(8, this.viewportWidth() - width - 8);
-    const left = Math.min(maxLeft, Math.max(8, anchor.x));
-    const top = Math.min(this.viewportHeight() - 80, anchor.y + anchor.height + 8);
+    const gap = 8;
+    const viewportWidth = this.viewportWidth();
+    const viewportHeight = this.viewportHeight();
+    const height = this.panelHeight();
+
+    const maxLeft = Math.max(gap, viewportWidth - width - gap);
+    const left = Math.min(maxLeft, Math.max(gap, anchor.x));
+
+    const spaceBelow = viewportHeight - (anchor.y + anchor.height) - gap;
+    // `height` is 0 before the panel has been measured once — default to
+    // "below" rather than flipping on a guess.
+    const fitsBelow = height === 0 || spaceBelow >= height;
+    const top = fitsBelow
+      ? anchor.y + anchor.height + gap
+      : Math.max(gap, anchor.y - height - gap);
+
     return { left: `${left}px`, top: `${top}px` };
   });
 

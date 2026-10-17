@@ -9,7 +9,7 @@
       />
       <sumi-stat-tile [value]="s.helpsPerHundred" label="helps / 100 words" />
       <sumi-stat-tile [value]="s.comprehensionPercent + '%'" label="comprehension" />
-      <sumi-stat-tile [value]="s.readingLevel" label="reading level" />
+      <sumi-stat-tile [value]="s.readingLevel" label="reading level" [hint]="s.readingLevelDetail" />
     </sumi-stat-grid>
 
     <section class="chart-section">

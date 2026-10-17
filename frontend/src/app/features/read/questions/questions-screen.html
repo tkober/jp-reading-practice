@@ -12,7 +12,7 @@
   />
 
   @if (answered()) {
-    <sumi-verdict [kind]="verdictKind()" [message]="'Correct answer: ' + correctOptionText()" />
+    <sumi-verdict [kind]="verdictKind()" [message]="verdictMessage()" />
 
     <div class="actions">
       <button type="button" sumiButton variant="primary" (click)="next.emit()">Continue</button>

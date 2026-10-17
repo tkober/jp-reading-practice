@@ -4,33 +4,38 @@ import type {
   WordDetails,
 } from '../../proto/word-popover-sheet/word-popover-sheet';
 import type { ChatMessage } from '../../proto/side-panel/side-panel';
+import { findWordByText } from './reading-text.fixture';
 
-export const WORD_DETAILS_KENROKUEN: WordDetails = {
-  word: '兼六園',
-  reading: 'けんろくえん',
-  meanings: ['Kenrokuen (a famous garden in Kanazawa)'],
-  knownStatus: 'Not in Kanji Trainer',
-  actions: [
-    { kind: 'explain', label: 'Explain word', weight: 2 },
-    { kind: 'translate', label: 'Translate sentence', weight: 3 },
-    { kind: 'grammar', label: 'Explain grammar', weight: 3 },
-    { kind: 'tutor', label: 'Ask tutor', weight: 3 },
-  ],
-};
+const WORD_ACTIONS = [
+  { kind: 'explain', label: 'Explain word', weight: 2 },
+  { kind: 'translate', label: 'Translate sentence', weight: 3 },
+  { kind: 'grammar', label: 'Explain grammar', weight: 3 },
+  { kind: 'tutor', label: 'Ask tutor', weight: 3 },
+] as const;
 
-export const WORD_DETAILS_KOTO: WordDetails = {
-  word: 'ことにした',
-  reading: 'ことにした',
-  jlptLevel: 'N3',
-  meanings: ['decided to (do something)'],
+/** A plain word lookup — 濡れても (the real token tapped in
+ *  `READING_TEXT`), a kanji word with a dictionary meaning and a Kanji
+ *  Trainer status, not a grammar pattern. */
+export const WORD_DETAILS_PRIMARY: WordDetails = {
+  word: findWordByText('濡れても').text,
+  reading: 'ぬれても',
+  meanings: ['to get wet (te-form of 濡れる + "even if")'],
   knownStatus: 'Kanji Trainer: Guru II',
-  actions: [
-    { kind: 'explain', label: 'Explain word', weight: 2 },
-    { kind: 'translate', label: 'Translate sentence', weight: 3 },
-    { kind: 'grammar', label: 'Explain grammar', weight: 3 },
-    { kind: 'tutor', label: 'Ask tutor', weight: 3 },
-  ],
+  actions: WORD_ACTIONS,
 };
+
+/** A grammar-pattern lookup, anchored to the token that actually contains
+ *  it (気にしないことにしました) — the popover names the pattern itself
+ *  (〜ことにした), not the whole conjugated phrase, and shows a "Grammar"
+ *  badge instead of a Kanji Trainer status (grammar patterns have none). */
+export const WORD_DETAILS_GRAMMAR: WordDetails = {
+  word: 'ことにした',
+  meanings: ['decided to (do something)'],
+  actions: WORD_ACTIONS,
+  kind: 'grammar',
+};
+
+export const GRAMMAR_ANCHOR_WORD = findWordByText('気にしないことにしました。');
 
 export const WORD_ANSWER_GRAMMAR: WordAnswer = {
   kind: 'grammar',

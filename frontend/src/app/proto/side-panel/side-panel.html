@@ -29,8 +29,10 @@
       (input)="draft.set($any($event.target).value)"
       (keydown)="onKeydown($event)"
     ></textarea>
-    <button type="button" sumiButton variant="primary" size="sm" [disabled]="!canSend()" (click)="onSend()">
-      Send
-    </button>
+    <div class="composer-actions">
+      <button type="button" sumiButton variant="primary" size="sm" [disabled]="!canSend()" (click)="onSend()">
+        Send
+      </button>
+    </div>
   </div>
 </div>

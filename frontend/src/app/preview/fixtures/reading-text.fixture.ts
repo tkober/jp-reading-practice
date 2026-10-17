@@ -202,6 +202,21 @@ export const READING_TEXT: ReadingTextData = {
   paragraphs: [paragraph1, paragraph2, paragraph3, paragraph4, paragraph5, paragraph6],
 };
 
+/** The word lookup/chat preview states anchor to a real token in
+ *  `READING_TEXT` (so the tapped word's highlight in the passage lines up
+ *  with the popover content) by its exact surface text, rather than a
+ *  separately maintained id. Throws if the text ever drifts out of sync —
+ *  better than a silently-missing highlight in the preview. */
+export function findWordByText(text: string): ReadingWord {
+  for (const paragraph of READING_TEXT.paragraphs) {
+    const match = paragraph.find((word) => word.text === text);
+    if (match) {
+      return match;
+    }
+  }
+  throw new Error(`findWordByText: no word "${text}" in READING_TEXT`);
+}
+
 export const COMPREHENSION_QUESTIONS: readonly ComprehensionQuestion[] = [
   {
     id: 'q1',

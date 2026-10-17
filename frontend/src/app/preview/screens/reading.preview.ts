@@ -10,8 +10,14 @@ import type {
   WordDetails,
 } from '../../features/read/reading/reading.types';
 import type { WordActivateEvent } from '../../proto/tappable-ruby-text/tappable-ruby-text';
-import { READING_TEXT } from '../fixtures/reading-text.fixture';
-import { CHAT_MESSAGES, WORD_ANSWER_GRAMMAR, WORD_DETAILS_KOTO } from '../fixtures/word-lookup.fixture';
+import { READING_TEXT, findWordByText } from '../fixtures/reading-text.fixture';
+import {
+  CHAT_MESSAGES,
+  GRAMMAR_ANCHOR_WORD,
+  WORD_ANSWER_GRAMMAR,
+  WORD_DETAILS_GRAMMAR,
+  WORD_DETAILS_PRIMARY,
+} from '../fixtures/word-lookup.fixture';
 
 export type ReadingPreviewVariant = 'default' | 'word' | 'answer' | 'chat' | 'furigana-all' | 'paused';
 
@@ -22,7 +28,13 @@ const DEFAULT_ACTIONS: readonly WordActionOption[] = [
   { kind: 'tutor', label: 'Ask tutor', weight: 3 },
 ];
 
-const FIXED_ANCHOR: WordAnchorRect = { x: 420, y: 260, width: 64, height: 32 };
+// The real, measured desktop (1280px) position of each anchored word in
+// `READING_TEXT` — matches where `reading-word`/`reading-answer` actually
+// render it, so the popover's "prefer below, flip above, never cover the
+// word" logic (see `WordPopoverSheet`) has a real rect to react to instead
+// of a guess that could land anywhere relative to the real text.
+const NURETEMO_ANCHOR: WordAnchorRect = { x: 494, y: 477, width: 88, height: 32 };
+const GRAMMAR_TOKEN_ANCHOR: WordAnchorRect = { x: 582, y: 477, width: 286, height: 32 };
 
 /** One component behind six `/preview/reading*` routes — see
  *  `SetupPreview`'s doc comment for why. */
@@ -76,11 +88,13 @@ export class ReadingPreview {
   constructor() {
     const variant = (inject(ActivatedRoute).snapshot.data['variant'] ?? 'default') as ReadingPreviewVariant;
     if (variant === 'word') {
-      this.selectedWord.set(WORD_DETAILS_KOTO);
-      this.selectedWordAnchor.set(FIXED_ANCHOR);
+      this.selectedWord.set(WORD_DETAILS_PRIMARY);
+      this.selectedWordAnchor.set(NURETEMO_ANCHOR);
+      this.selectedWordId.set(findWordByText('濡れても').id);
     } else if (variant === 'answer') {
-      this.selectedWord.set(WORD_DETAILS_KOTO);
-      this.selectedWordAnchor.set(FIXED_ANCHOR);
+      this.selectedWord.set(WORD_DETAILS_GRAMMAR);
+      this.selectedWordAnchor.set(GRAMMAR_TOKEN_ANCHOR);
+      this.selectedWordId.set(GRAMMAR_ANCHOR_WORD.id);
       this.wordAnswer.set(WORD_ANSWER_GRAMMAR);
     } else if (variant === 'chat') {
       this.chatOpen.set(true);

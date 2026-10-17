@@ -105,11 +105,16 @@
 
 .composer {
   display: flex;
+  flex-direction: column;
   gap: var(--sumi-space-2);
-  align-items: flex-end;
 
   textarea {
-    flex: 1;
+    width: 100%;
     resize: none;
   }
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
 }

@@ -1,14 +1,25 @@
 @if (word(); as details) {
   <button type="button" class="backdrop" aria-label="Close word lookup" (click)="close.emit()"></button>
 
-  <div class="panel" [ngStyle]="popoverStyle()" role="dialog" aria-modal="true" [attr.aria-label]="details.word">
+  <div
+    #panelRef
+    class="panel"
+    [ngStyle]="popoverStyle()"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="details.word"
+  >
     <div class="handle" aria-hidden="true"></div>
 
     <div class="header">
       <div class="word-line">
         <span class="word" lang="ja">{{ details.word }}</span>
-        <span class="reading" lang="ja">{{ details.reading }}</span>
-        @if (details.jlptLevel) {
+        @if (details.reading && details.reading !== details.word) {
+          <span class="reading" lang="ja">{{ details.reading }}</span>
+        }
+        @if (details.kind === 'grammar') {
+          <sumi-badge tone="neutral">Grammar</sumi-badge>
+        } @else if (details.jlptLevel) {
           <sumi-badge tone="accent">{{ details.jlptLevel }}</sumi-badge>
         }
       </div>
@@ -18,7 +29,9 @@
       </button>
     </div>
 
-    <p class="known-status">{{ details.knownStatus }}</p>
+    @if (details.kind !== 'grammar' && details.knownStatus) {
+      <p class="known-status">{{ details.knownStatus }}</p>
+    }
 
     <ul class="meanings">
       @for (meaning of details.meanings; track meaning) {

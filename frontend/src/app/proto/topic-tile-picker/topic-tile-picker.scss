@@ -1,7 +1,24 @@
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  // Phone: 2 columns, so all 8 tiles (7 topics + Surprise me) read as a
+  // clean 4-row block. Desktop: a fixed 4 columns rather than
+  // `auto-fill` — with 8 tiles `auto-fill`'s own column count depends on
+  // how wide a tile a glyph like ニュース happens to need, which could
+  // otherwise wrap that one tile's text onto two lines while the rest
+  // stay on one.
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--sumi-space-3);
+}
+
+@media (min-width: 720px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .tile {
+    min-height: 88px;
+    padding: var(--sumi-space-3) var(--sumi-space-2);
+  }
 }
 
 .tile {
@@ -10,8 +27,11 @@
   align-items: center;
   justify-content: center;
   gap: var(--sumi-space-1);
-  min-height: 88px;
-  padding: var(--sumi-space-3) var(--sumi-space-2);
+  // Shorter on phone (where it is one of 8 competing for vertical space
+  // above the fold) than desktop, still comfortably above the 44px tap
+  // target minimum.
+  min-height: 72px;
+  padding: var(--sumi-space-2);
   border: 1px solid var(--sumi-line);
   border-radius: var(--sumi-radius);
   background: var(--sumi-surface);

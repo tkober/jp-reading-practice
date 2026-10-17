@@ -5,14 +5,73 @@
 .session-bar {
   display: flex;
   align-items: center;
-  gap: var(--sumi-space-3);
-  flex-wrap: wrap;
+  gap: var(--sumi-space-2);
+  // Never wraps: below 720px the icon-only row keeps this to a handful of
+  // small, fixed-size buttons that always fit next to the timer and brand.
+  flex-wrap: nowrap;
 }
 
 .timer {
   font-size: var(--sumi-text-md);
   font-weight: 600;
-  min-width: 3.5em;
+  min-width: 3em;
+  flex-shrink: 0;
+}
+
+.compact-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-1);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--sumi-radius-sm);
+  background: transparent;
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-md);
+  line-height: 1;
+  cursor: pointer;
+
+  sumi-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover {
+    background: var(--sumi-sunken);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &[aria-pressed='true'] {
+    color: var(--sumi-accent-ink);
+    background: var(--sumi-accent-soft);
+  }
+}
+
+.full-actions {
+  display: none;
+  align-items: center;
+  gap: var(--sumi-space-3);
+}
+
+@media (min-width: 720px) {
+  .compact-actions {
+    display: none;
+  }
+
+  .full-actions {
+    display: flex;
+  }
 }
 
 .columns {

@@ -2,6 +2,20 @@ sumi-card {
   display: block;
 }
 
+// Same small-uppercase card header convention as the Settings screen
+// (`sumiCardHeader` only adds layout, not typography — see `sumi-card`'s
+// own doc comment) — a plain `<h2>` falls back to the browser's UA
+// default otherwise, which reads far too large for a card label and
+// leaves the whole card looking mostly empty underneath it.
+h2[sumiCardHeader] {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sumi-muted);
+}
+
 .hint {
   margin: var(--sumi-space-2) 0 0 0;
   color: var(--sumi-text-2);

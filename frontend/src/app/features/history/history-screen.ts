@@ -25,8 +25,10 @@ export class HistoryScreen {
     { key: 'score', label: 'Score', align: 'end' },
   ];
 
+  // Newest first, regardless of what order the input happens to arrive in —
+  // the natural reading order for a history list.
   protected readonly rows = computed<SumiTableRow[]>(() =>
-    this.sessions().map((session) => ({
+    [...this.sessions()].reverse().map((session) => ({
       id: session.id,
       date: session.date,
       title: session.titleJapanese,

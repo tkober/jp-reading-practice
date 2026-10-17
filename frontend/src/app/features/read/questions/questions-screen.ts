@@ -38,4 +38,10 @@ export class QuestionsScreen {
   protected readonly correctOptionText = computed(
     () => this.question().options.find((option) => option.id === this.question().correctOptionId)?.text ?? '',
   );
+
+  /** Only a wrong answer needs to be told what the right one was — a
+   *  correct answer already says "Correct", repeating it adds nothing. */
+  protected readonly verdictMessage = computed(() =>
+    this.verdictKind() === 'wrong' ? `Correct answer: ${this.correctOptionText()}` : undefined,
+  );
 }

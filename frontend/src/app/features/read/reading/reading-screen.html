@@ -10,13 +10,51 @@
   <ng-template sumiShellFocusActions>
     <div class="session-bar">
       <span class="timer sumi-tabular" aria-label="Elapsed time">{{ elapsedLabel() }}</span>
-      <button type="button" sumiButton variant="ghost" size="sm" (click)="pauseToggle.emit()">
-        {{ paused() ? 'Resume' : 'Pause' }}
-      </button>
-      <sumi-furigana-toggle />
-      <button type="button" sumiButton variant="ghost" size="sm" (click)="chatToggle.emit()">
-        Ask about this text
-      </button>
+
+      <!-- Below 720px: one compact row of icon-only buttons so the header
+           never wraps onto several lines and pushes the brand around. -->
+      <div class="compact-actions">
+        <button
+          type="button"
+          class="icon-btn"
+          [attr.aria-label]="paused() ? 'Resume' : 'Pause'"
+          [attr.aria-pressed]="paused()"
+          title="{{ paused() ? 'Resume' : 'Pause' }}"
+          (click)="pauseToggle.emit()"
+        >
+          <span aria-hidden="true">{{ paused() ? '▶' : '❚❚' }}</span>
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          aria-label="Toggle furigana"
+          title="Toggle furigana"
+          [attr.aria-pressed]="furigana.visible()"
+          (click)="furigana.toggle()"
+        >
+          <span aria-hidden="true">あ</span>
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          aria-label="Ask about this text"
+          title="Ask about this text"
+          (click)="chatToggle.emit()"
+        >
+          <sumi-icon name="chat" />
+        </button>
+      </div>
+
+      <!-- From 720px up: the same actions with their text labels. -->
+      <div class="full-actions">
+        <button type="button" sumiButton variant="ghost" size="sm" (click)="pauseToggle.emit()">
+          {{ paused() ? 'Resume' : 'Pause' }}
+        </button>
+        <sumi-furigana-toggle />
+        <button type="button" sumiButton variant="ghost" size="sm" (click)="chatToggle.emit()">
+          Ask about this text
+        </button>
+      </div>
     </div>
   </ng-template>
 

@@ -7,10 +7,23 @@
 // their visibility to the shared `SumiFurigana` service, but it has no
 // per-word interactivity — there is nothing to hang a tap/click or a
 // keyboard-reachable hit target off inside one `sumi-furigana` instance.
-// This renders each word as its own focusable button instead (plain
+// This renders each word as its own focusable element instead (plain
 // `<ruby>`/`<rt>`, not `sumi-furigana`), so word lookup can work, while
 // still reading the same `SumiFurigana.visible()` toggle so turning
 // furigana off app-wide also hides it here.
+//
+// Each word is a `<span role="button" tabindex="0">`, not a real
+// `<button>`: a `<button>` (like `<input>`/`<select>`) is an *atomic*
+// inline-level box per the CSS box model — its entire text content is one
+// indivisible unit for line-breaking, so a multi-character word that does
+// not fit the remaining line width jumps to the next line whole, leaving a
+// large ragged gap rather than breaking between its own characters the way
+// Japanese text normally does. A plain inline `<span>` has no such
+// restriction and participates in ordinary Unicode line-breaking
+// (`line-break: strict`, the default CJK-aware behaviour) like any other
+// text, while `role="button"` + `tabindex="0"` + explicit key handling keep
+// it just as keyboard-reachable and announced the same way a button would
+// be.
 //
 // `unknown` words always get a reading when one is set; `furiganaEverywhere`
 // (this app's "show furigana everywhere" help, costed separately from the
@@ -52,7 +65,7 @@ export class TappableRubyText {
   readonly wordActivate = output<WordActivateEvent>();
 
   @ViewChildren('wordRef')
-  private readonly wordRefs?: QueryList<ElementRef<HTMLButtonElement>>;
+  private readonly wordRefs?: QueryList<ElementRef<HTMLElement>>;
 
   protected showsReading(word: ReadingWord): boolean {
     if (!word.reading || !this.furigana.visible()) {
@@ -61,17 +74,25 @@ export class TappableRubyText {
     return !!word.unknown || this.furiganaEverywhere();
   }
 
-  protected onActivate(word: ReadingWord, event: MouseEvent): void {
+  protected onActivate(word: ReadingWord, event: Event): void {
     const target = event.currentTarget as HTMLElement;
     this.wordActivate.emit({ word, rect: target.getBoundingClientRect() });
   }
 
-  /** Left/Right/Up/Down move focus between word buttons; Home/End jump to
-   *  the first/last word — the reading text has no other roving-tabindex
-   *  control, so plain arrow-key navigation across a flat list of buttons
-   *  is enough (unlike `sumi-segmented-control`, there is no "selected"
+  /** `Enter`/`Space` activate a word, same as a native button's click would
+   *  — needed since a `role="button"` span gets no such behaviour for
+   *  free. Left/Right/Up/Down move focus between word spans; Home/End jump
+   *  to the first/last word — the reading text has no other roving-
+   *  tabindex control, so plain arrow-key navigation across a flat list is
+   *  enough (unlike `sumi-segmented-control`, there is no "selected"
    *  option to track). */
-  protected onKeydown(event: KeyboardEvent, flatIndex: number): void {
+  protected onKeydown(event: KeyboardEvent, word: ReadingWord, flatIndex: number): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.onActivate(word, event);
+      return;
+    }
+
     const refs = this.wordRefs;
     if (!refs || refs.length === 0) {
       return;

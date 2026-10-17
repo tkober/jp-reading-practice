@@ -6,3 +6,13 @@ sumi-card {
   display: block;
   margin-top: var(--sumi-space-5);
 }
+
+// See setup-screen.scss's matching rule for why this is needed at all.
+h2[sumiCardHeader] {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sumi-muted);
+}

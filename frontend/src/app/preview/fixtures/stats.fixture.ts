@@ -56,7 +56,8 @@ export const STATS_SUMMARY: StatsSummary = {
   ),
   helpsPerHundred: latest.helpsPerHundred,
   comprehensionPercent: Math.round((totalCorrect / totalQuestions) * 100),
-  readingLevel: 'N4 comfortable · N3 with help',
+  readingLevel: 'N4',
+  readingLevelDetail: 'comfortable · N3 with help',
 };
 
 export const PROBLEM_WORDS: readonly ProblemWord[] = [
