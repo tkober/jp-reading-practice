@@ -11,10 +11,12 @@ level, using what the other apps in the suite -- chiefly
 about their vocabulary. See `REQUIREMENTS.md` for the full concept (epic #1)
 and the open questions that are not decided yet.
 
-This repository currently holds the backend skeleton (issue #2) and the
-Angular frontend skeleton (issue #3): no domain logic, no deployment.
-Everything below describes what actually exists; do not take it as a preview
-of what #4 and later issues will add.
+This repository holds the backend skeleton (issue #2), the Angular frontend
+skeleton (issue #3), deployment (#4), the Kanji Trainer MCP client (#5) and
+the text analysis backend (#7 -- tokens, furigana, JLPT, metrics; see "Text
+analysis" below). The frontend has no reading screen of its own yet (#6's
+design and #9's rendering are separate issues); everything below describes
+what actually exists, not a preview of what a later issue will add.
 
 ## Language convention
 
@@ -155,6 +157,107 @@ are the lengths of the full known lists, not anything from the summary: its
 per-state `counts` ignore the Guru threshold, and its JLPT breakdown only
 covers subjects the JLPT snapshot lists. Fetching the lists also warms the
 cache that text generation reads next.
+
+## Text analysis (issue #7)
+
+A pure, synchronous module (`app/analysis.py`'s `analyze(text, known,
+jlpt_lookup)`) that turns a Japanese text plus the learner's known set into
+tokens and metrics -- nothing in it calls an LLM or MCP. #8 (measuring a
+generated text) and #9 (rendering its tokens) are both built on this one
+function; only `POST /api/analysis` (below) wraps it with the live calls.
+
+**Tokenisation** (`app/furigana.py`) is fugashi + unidic-lite, the same
+pairing as jp-conversation-practice's `backend/app/furigana.py`, whose
+ruby-only-over-kanji splitting, okurigana alignment, whole-word fallback,
+`_SURFACE_READINGS` table and graceful `None` on a broken dictionary are
+ported here rather than re-derived -- the one real change is working per
+token rather than per transcript line, since a `Token` needs its own lemma/
+reading/part-of-speech, not just a flat ruby list. A token's `lemma` is
+unidic's own dictionary form only for inflectable words (verbs, i-/na-
+adjectives); every other part of speech keeps its surface, because nouns do
+not conjugate and unidic's `lemma` for many proper nouns is their *katakana
+pronunciation* rather than the written form -- the fixture title's own first
+word, 金沢, comes back as lemma "カナザワ", which would send the wrong
+string to both vocabulary matching and `get_jlpt_levels`.
+
+**The furigana rule** (`furigana.is_reading_composed`, called from
+`analysis._build_token`): a word with kanji gets furigana iff it is not a
+known vocabulary item (matched by lemma + reading, via `KnownSet.
+knows_word`) **and** (any of its kanji is unknown, or its reading cannot be
+*composed* from its kanji's own known readings). "Composed" walks the same
+kana/non-kana runs the ruby splitter uses: a kana run (okurigana) must
+appear verbatim in the reading at the right position; a kanji run's
+corresponding slice has to decompose into one known reading per character,
+in order, tolerating rendaku (か→が etc.) and gemination (つ/ち/く/き→っ) at
+the boundary between two kanji. A kanji missing from the known set simply
+has no candidate reading, so "unknown kanji" and "does not compose" are not
+actually two separate code paths -- see that function's docstring. 今日
+(キョウ) fails the check even with 今/日 both known (the reading does not
+follow from either); 学校 (がっこう) and 手紙 (てがみ) pass it only because
+gemination/rendaku are tolerated at the boundary.
+
+**The known set** (`app/known_set.py`) is a plain `KnownSet` (kanji
+character -> known readings, vocabulary lemma -> known readings) built from
+`kanji_trainer.get_known_kanji`/`get_known_vocabulary` -- `build_known_set`
+is pure, `fetch_known_set` is the one-line async wrapper. On'yomi is folded
+to hiragana and kun'yomi is taken bare of any `.`-separated okurigana, per
+the furigana rule's own wording -- both are defensive no-ops against
+kanji-trainer's actual WaniKani-sourced data, which already stores on'yomi
+in hiragana and kun'yomi already bare of okurigana (e.g. 飲's kun'yomi is
+"の", not "のむ" -- confirmed against a real import while building this).
+`nanori` (name) readings are excluded from composition on purpose: an
+obscure name reading passing the "composed" check for an everyday word would
+be wrong far more often than it would be right.
+
+**JLPT levels** come from `kanji_trainer.get_jlpt_levels(url, items)`, never
+from a copy kept in this app -- `app/api/analysis.py` batches every text's
+distinct `(lemma, reading)` pairs (`analysis.collect_lemmas`) into one call
+before calling the pure `analyze()` a second time with the results (the
+first, throwaway call is only there to get the token list to collect lemmas
+from -- tokenising twice costs nothing, fugashi runs in well under a
+millisecond per sentence).
+
+**Metrics** (`Metrics` in `models.py`): `characters` is kana + kanji + latin
+letters/digits in the raw text, no punctuation or whitespace -- what
+"characters per minute" would be measured against. `words` is tokens with
+`is_word` (every part of speech except 助詞/助動詞/補助記号/whitespace;
+numbers count) -- what "helps per 100 words" would be measured against.
+`kanji_total`/`kanji_unknown` count kanji *occurrences*, not distinct
+characters, and deliberately exclude 々/〆 (never a Kanji Trainer subject of
+their own, so counting one would always show up as an unknowable "unknown
+kanji"). `jlpt_mix` is the share of content words at each level, 5..1 plus
+`unlisted`, summing to 1 unless there are no content words at all.
+
+**Dictionary** (`app/dictionary.py`, `app/data/jmdict.sqlite`): JMdict
+(EDRDG, CC BY-SA 4.0 -- see `app/data/LICENSES.md`), looked up by lemma +
+reading for the word popover's part of speech and first three English
+glosses. Built by `backend/scripts/build_jmdict.py` (downloads
+`JMdict_e.gz`, ~10 MB, and writes a ~49 MB SQLite of lemma/reading/pos/
+glosses only -- no example sentences, no cross-references) -- gitignored,
+not committed, built once by a developer and again by `backend/Dockerfile`'s
+`jmdict-builder` stage on every image build. `lookup()` returns `None`
+rather than raising when the file has not been built, the same shape of
+degradation `kanji_trainer.py`'s `KanjiTrainerUnavailable` is for the known
+set. No HTTP endpoint for it yet -- #9's popover is expected to add one;
+issue #7 only needed the module and its tests.
+
+**`POST /api/analysis`** (`app/api/analysis.py`) is the debug endpoint for
+development and for #8: `{text}` -> the full `TextAnalysis` plus
+`kanji_trainer_error`. If the Kanji Trainer is unreachable, it analyzes with
+an empty known set and no JLPT levels instead of failing the request --
+every kanji looks unknown and every word's `jlpt` is `null`, same spirit as
+`GET /api/kanji-trainer/status`'s "always 200" -- and the English reason
+goes in `kanji_trainer_error` rather than a dedicated status shape, since
+the whole response *is* the analysis either way.
+
+**Image size.** fugashi + unidic-lite add roughly 250 MB (unpacked,
+memory-mapped) to the backend image, same as jp-conversation-practice's own
+documented footprint; `jmdict.sqlite` adds another ~49 MB. Together that is
+a sizeable jump for this image, accepted because both are the practical
+choice for what they do locally with no API cost per request -- see
+`scripts/build_jmdict.py`'s own module docstring for why a ready-made
+PyPI package (e.g. `jamdict`, ~100 MB including data this app does not use)
+was not used instead.
 
 ## Frontend
 

@@ -9,6 +9,13 @@ node_modules/
 dist/
 .angular/
 
+# Built dictionary (backend/scripts/build_jmdict.py) -- a derived artefact,
+# not something to track changes on, and too large to commit. The raw
+# download is cached alongside it so the script does not re-fetch it on
+# every run; see that script's own comment.
+backend/app/data/jmdict.sqlite
+backend/app/data/JMdict_e.gz
+
 # Secrets and local state. The .env.example files are tracked; the .env files
 # they are copied to are not.
 .env
