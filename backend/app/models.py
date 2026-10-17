@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Health(BaseModel):
@@ -460,11 +460,70 @@ class SessionSummaryOut(BaseModel):
     #: position in the text.
     looked_up_words: list[LookedUpWordOut] = Field(default_factory=list)
     #: Sum of `HelpEvent.cost_usd` over this session's own assist helps
-    #: (issue #10) -- 0.0 for a cache hit, the real cost only for an answer
-    #: this session's own request actually generated. Never `None`: an
-    #: unpriced model's assist still adds 0 here (see `HelpEvent.cost_usd`'s
-    #: docstring), it just never shows a per-answer cost of its own.
+    #: (issue #10) *and* tutor-chat answers (issue #11) -- 0.0 for a cache
+    #: hit (assists only; the chat never caches), the real cost only for an
+    #: answer this session's own request actually generated. Never `None`:
+    #: an unpriced model's assist still adds 0 here (see `HelpEvent.
+    #: cost_usd`'s docstring), it just never shows a per-answer cost of its
+    #: own.
     assists_cost_usd: float = 0.0
+    #: Number of tutor-chat questions asked this session (issue #11) -- one
+    #: `help_events` row per question, `kind: "tutor"`, always counted.
+    chat_questions: int = 0
+
+
+# --- Tutor chat (issue #11) --------------------------------------------------
+
+ChatRole = Literal["user", "assistant"]
+
+
+class ChatMessageOut(BaseModel):
+    """One turn, as `GET /api/sessions/{id}/chat` (reload) and
+    `POST .../chat` (the two new turns) both expose it. `focus_sentence_key`/
+    `model`/`cost_usd` are `None` save where `db.ChatMessage`'s own docstring
+    says they are set (a focused user message; an assistant message)."""
+
+    id: int
+    role: ChatRole
+    content: str
+    focus_sentence_key: str | None = None
+    model: str | None = None
+    cost_usd: float | None = None
+    created_at: datetime
+
+
+class ChatRequest(BaseModel):
+    """`POST /api/sessions/{id}/chat`'s body. `focus_token_id` is the tapped
+    word whose *sentence* becomes "About this sentence: ..." in the prompt
+    sent for this one question (`help_prompts.build_tutor_messages`) --
+    unset for a question asked from the session bar's own chat action,
+    which carries no focus at all."""
+
+    content: str
+    focus_token_id: str | None = None
+
+    @field_validator("content")
+    @classmethod
+    def _validate_content(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("content must not be empty.")
+        if len(stripped) > 1000:
+            raise ValueError("content must be at most 1000 characters.")
+        return stripped
+
+
+class ChatResult(BaseModel):
+    """`counted`/`weight` follow `HelpResult`'s own convention, but every
+    question is counted (brief: "a conversation is not a cacheable
+    question") -- `help_events.target` is `"chat:<user message id>"`, always
+    unique, so the per-session dedupe never actually fires for `kind:
+    "tutor"`."""
+
+    user_message: ChatMessageOut
+    assistant_message: ChatMessageOut
+    counted: bool
+    weight: int
 
 
 class ReadingPaceOut(BaseModel):

@@ -22,13 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import dictionary
 from .. import kanji_trainer as kt
-from ..assist import generate_help_answer
-from ..db import GeneratedText, HelpAnswer, HelpEvent, ReadingSession, get_session
+from ..assist import generate_chat_answer, generate_help_answer
+from ..db import ChatMessage, GeneratedText, HelpAnswer, HelpEvent, ReadingSession, get_session
 from ..generation import GenerationError
 from ..help_prompts import (
     build_explain_grammar_instructions,
     build_explain_word_instructions,
     build_translate_sentence_instructions,
+    build_tutor_messages,
 )
 from ..helps import WEIGHTS
 from ..models import (
@@ -36,6 +37,9 @@ from ..models import (
     AnswerResult,
     AssistRequest,
     AssistResult,
+    ChatMessageOut,
+    ChatRequest,
+    ChatResult,
     FinishReadingRequest,
     HelpRequest,
     HelpResult,
@@ -426,6 +430,129 @@ async def assist(
     )
 
 
+# --- Tutor chat (issue #11) --------------------------------------------------
+
+
+def _chat_message_out(row: ChatMessage) -> ChatMessageOut:
+    return ChatMessageOut(
+        id=row.id,
+        role=row.role,  # type: ignore[arg-type]
+        content=row.content,
+        focus_sentence_key=row.focus_sentence_key,
+        model=row.model,
+        cost_usd=row.cost_usd,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/{session_id}/chat", response_model=list[ChatMessageOut])
+async def get_chat(session_id: int, session: AsyncSession = Depends(get_session)) -> list[ChatMessageOut]:
+    """The session's whole conversation so far, oldest first -- for a reload
+    to pick the panel back up where it left off. Available regardless of
+    the session's own status (unlike `POST .../chat`): the panel itself is
+    never shown outside `reading`, but there is no reason to 404 a read of
+    history that still exists once the session moves on."""
+    await _get_session_or_404(session, session_id)
+    rows = list(
+        await session.scalars(
+            select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id)
+        )
+    )
+    return [_chat_message_out(row) for row in rows]
+
+
+@router.post("/{session_id}/chat", response_model=ChatResult)
+async def post_chat(
+    session_id: int, payload: ChatRequest, session: AsyncSession = Depends(get_session)
+) -> ChatResult:
+    """One tutor-chat question. The user message is stored *before* calling
+    OpenAI and kept even if that call fails (409 no key, 502 upstream) --
+    same convention as `/assist` -- so the client can show it as a failed
+    question and let the learner resend (a resend is simply a new question,
+    there is nothing to retry server-side).
+
+    Every question is its own help event (`kind: "tutor"`, weight 3,
+    `target: "chat:<user message id>"`, always unique) -- counted every
+    time, never deduped the way a word/sentence target is (brief: "a
+    conversation is not a cacheable question").
+    """
+    row = await _get_session_or_404(session, session_id)
+    _require_status(row, "reading")
+    text_row = await _get_text_or_404(session, row.text_id)
+
+    focus_sentence_key: str | None = None
+    focus_sentence_text: str | None = None
+    focus_token: dict | None = None
+    if payload.focus_token_id is not None:
+        focus_token = _find_token(text_row, payload.focus_token_id)
+        if focus_token is None:
+            raise HTTPException(status_code=404, detail="Unknown token.")
+        focus_sentence = _sentence_for_token(text_row, focus_token)
+        focus_sentence_key = focus_sentence.key
+        focus_sentence_text = focus_sentence.text
+
+    history_rows = list(
+        await session.scalars(
+            select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id)
+        )
+    )
+    history_pairs = [(message.role, message.content) for message in history_rows]
+
+    user_row = ChatMessage(
+        session_id=row.id,
+        role="user",
+        content=payload.content,
+        focus_sentence_key=focus_sentence_key,
+    )
+    session.add(user_row)
+    await session.commit()
+    await session.refresh(user_row)
+
+    messages = build_tutor_messages(
+        text=text_row.body,
+        history=history_pairs,
+        question=payload.content,
+        focus_sentence=focus_sentence_text,
+    )
+
+    config = await load_runtime_config(session)
+    try:
+        answer, usage = await generate_chat_answer(config=config, messages=messages)
+    except GenerationError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    answer_cost = cost_usd(config.help_model, [usage])
+    assistant_row = ChatMessage(
+        session_id=row.id,
+        role="assistant",
+        content=answer,
+        model=config.help_model,
+        usage=usage.as_dict(),
+        cost_usd=answer_cost,
+    )
+    session.add(assistant_row)
+    await session.commit()
+    await session.refresh(assistant_row)
+
+    help_result = await _log_help(
+        session,
+        row,
+        kind="tutor",
+        token_id=focus_token["id"] if focus_token else "",
+        target=f"chat:{user_row.id}",
+        lemma=focus_token["lemma"] if focus_token else "",
+        surface=focus_token["surface"] if focus_token else "",
+        cost_usd=answer_cost,
+    )
+
+    return ChatResult(
+        user_message=_chat_message_out(user_row),
+        assistant_message=_chat_message_out(assistant_row),
+        counted=help_result.counted,
+        weight=help_result.weight,
+    )
+
+
 @router.post("/{session_id}/finish-reading", response_model=SessionOut)
 async def finish_reading(
     session_id: int, payload: FinishReadingRequest, session: AsyncSession = Depends(get_session)
@@ -496,9 +623,12 @@ async def get_summary(
         round(weight_sum / metrics["words"] * 100, 1) if metrics["words"] else 0.0
     )
     # 0.0 for reading_peek/word_lookup (cost_usd is NULL) and for a cached
-    # assist answer (cost_usd is 0.0) alike -- only an assist this session's
-    # own request actually generated adds anything (see `HelpEvent.cost_usd`).
+    # assist answer (cost_usd is 0.0) alike -- only an assist/chat this
+    # session's own request actually generated adds anything (see
+    # `HelpEvent.cost_usd`). A tutor-chat answer is never cached, but its
+    # cost sums in here exactly the same way.
     assists_cost_usd = sum(h.cost_usd or 0.0 for h in help_rows)
+    chat_questions = sum(1 for h in help_rows if h.kind == "tutor")
 
     questions = text_row.questions
     answers = row.answers
@@ -527,6 +657,7 @@ async def get_summary(
         active_ms=row.active_ms,
         looked_up_words=looked_up_words,
         assists_cost_usd=assists_cost_usd,
+        chat_questions=chat_questions,
     )
 
 

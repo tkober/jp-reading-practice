@@ -357,6 +357,49 @@ class HelpAnswer(Base):
     )
 
 
+class ChatMessage(Base):
+    """One turn in the tutor chat about a text (issue #11).
+
+    Unlike `HelpEvent`, this is the actual conversation content, not a
+    dedupe/cost ledger -- every question is a brand new row, there is no
+    unique constraint here at all (the chat's own counting/dedupe lives in
+    `help_events`, `kind: "tutor"`, counted *every* time -- see
+    `api/sessions.py`'s `post_chat` and `helps.py`). `role` is `"user"` or
+    `"assistant"`, a plain string for the same reason every other `kind`-ish
+    column in this schema is (`HelpEvent.kind`'s own docstring).
+
+    `focus_sentence_key` is set only on a *user* message that carried a
+    focus -- "Ask tutor" from the word popover, or a question asked while
+    the chip was still showing -- `sentences.Sentence.key`, the same shape
+    `HelpEvent.target`'s sentence-kind targets use. `model`/`usage`/
+    `cost_usd` describe the one generation call that produced an
+    *assistant* message (same convention as `GeneratedText`/`HelpAnswer`);
+    all three are `NULL` on a user message, which never costs anything on
+    its own.
+
+    One session's rows are its entire conversation, read back oldest-first
+    by `GET /api/sessions/{id}/chat` and sent to the model as history on
+    every new question (`help_prompts.build_tutor_messages`) -- plain
+    `role`/`content` turns, never re-adding a past turn's own focus prefix.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("reading_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    focus_sentence_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    usage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # --- engine ------------------------------------------------------------------
 
 _engine: AsyncEngine | None = None
