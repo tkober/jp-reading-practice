@@ -134,8 +134,18 @@
 }
 
 .pause-overlay {
-  position: absolute;
+  // Fixed to the viewport, not to the text block: on a long text the block's
+  // centre can be far off screen, and the learner must see Resume wherever
+  // they paused. Transparent to the pointer except for its own contents, so
+  // the reading bar above stays usable.
+  position: fixed;
   inset: 0;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
   display: flex;
   flex-direction: column;
   align-items: center;
