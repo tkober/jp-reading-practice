@@ -166,6 +166,12 @@
   line-height: 1.5;
 }
 
+// A failed assist (no key, upstream error -- issue #10) shown as the
+// answer block's own error text, never a page-level error.
+.word-answer--error .word-answer__text {
+  color: var(--sumi-wrong);
+}
+
 .word-actions {
   display: flex;
   flex-wrap: wrap;

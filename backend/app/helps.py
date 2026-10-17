@@ -5,13 +5,14 @@ A help's weight is what the session summary's `helps_per_100_words` sums
 session (the unique constraint on `help_events`, see `db.py`), and this
 module is the one place that says how much each kind is worth.
 
-`EXPLAIN_WEIGHT`/`TRANSLATE_WEIGHT`/`GRAMMAR_WEIGHT`/`TUTOR_WEIGHT` are not
-used by anything yet -- issue #10 adds the endpoints that log them -- but
-are defined here now, from the concept, so they land in the one obvious
-place rather than being invented again once something needs them. Unlike
-`reading_peek`/`word_lookup` (counted once per word per *session*), the
-concept counts those per word per *question* -- #10's own job to implement,
-not this module's.
+`EXPLAIN_WEIGHT`/`TRANSLATE_WEIGHT`/`GRAMMAR_WEIGHT` are wired up by issue
+#10's `POST /api/sessions/{id}/assist` (`api/sessions.py`); `TUTOR_WEIGHT`
+stays unused until #11 adds the tutor chat. Counted once per *target* per
+session, same dedupe shape as `reading_peek`/`word_lookup` (a word's lemma
+for `explain`, the sentence key for `translate`/`grammar` -- see
+`sentences.py` and `db.HelpEvent`), not per question as an earlier draft of
+the concept considered -- per-session dedupe is simpler and the concept's
+own counting granularity was never load-bearing for anything else.
 """
 
 from __future__ import annotations

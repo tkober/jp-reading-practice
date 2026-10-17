@@ -314,10 +314,12 @@ class TextOut(BaseModel):
 
 SessionStatus = Literal["reading", "questions", "finished"]
 #: Only `reading_peek` is ever sent through `POST /api/sessions/{id}/helps`
-#: today -- `word_lookup` is logged by `POST .../lookups` itself, and
-#: `explain`/`translate`/`grammar`/`tutor` arrive with issue #10. The
-#: `help_events.kind` column is a plain string specifically so none of this
-#: needs a schema change later (see `db.py`'s `HelpEvent`).
+#: -- `word_lookup` is logged by `POST .../lookups` itself, and
+#: `explain`/`translate`/`grammar` (issue #10) by `POST .../assist`
+#: (`AssistRequest` below), never this one. A later `tutor` (#11) is
+#: expected to get its own endpoint the same way. The `help_events.kind`
+#: column is a plain string specifically so none of this needs a schema
+#: change later (see `db.py`'s `HelpEvent`).
 HelpKind = Literal["reading_peek"]
 
 
@@ -398,6 +400,34 @@ class WordLookupOut(BaseModel):
     known_status: str
 
 
+#: The word popover's three LLM action buttons (issue #10). "Ask tutor"
+#: (#11) stays a separate, later endpoint -- not a fourth value here.
+AssistKind = Literal["explain", "translate", "grammar"]
+
+
+class AssistRequest(BaseModel):
+    """`POST /api/sessions/{id}/assist`'s body. `explain` acts on the word
+    itself (`token_id` must be `is_word`, 422 otherwise); `translate`/
+    `grammar` act on the sentence containing it."""
+
+    kind: AssistKind
+    token_id: str
+
+
+class AssistResult(BaseModel):
+    """`cached=True` when the answer came from `help_answers` without an
+    OpenAI call this time (by this session or an earlier one, for this
+    exact text/kind/target); `counted`/`weight` follow `HelpResult`'s own
+    convention -- a repeated ask of the same target in the same session is
+    `counted: false`, regardless of `cached`."""
+
+    kind: AssistKind
+    answer: str
+    cached: bool
+    counted: bool
+    weight: int
+
+
 class AnswerRequest(BaseModel):
     question_index: int
     option_index: int
@@ -429,6 +459,12 @@ class SessionSummaryOut(BaseModel):
     #: In lookup order (first lookup first) -- never alphabetical or by
     #: position in the text.
     looked_up_words: list[LookedUpWordOut] = Field(default_factory=list)
+    #: Sum of `HelpEvent.cost_usd` over this session's own assist helps
+    #: (issue #10) -- 0.0 for a cache hit, the real cost only for an answer
+    #: this session's own request actually generated. Never `None`: an
+    #: unpriced model's assist still adds 0 here (see `HelpEvent.cost_usd`'s
+    #: docstring), it just never shows a per-answer cost of its own.
+    assists_cost_usd: float = 0.0
 
 
 class ReadingPaceOut(BaseModel):

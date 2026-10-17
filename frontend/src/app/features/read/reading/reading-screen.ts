@@ -90,6 +90,14 @@ export class ReadingScreen {
   readonly selectedWord = input<WordDetails | null>(null);
   readonly selectedWordId = input<string | null>(null);
   readonly wordAnswer = input<WordAnswer | null>(null);
+  /**
+   * The action currently waiting on an answer (issue #10), or `null` when
+   * none is -- every action button is disabled while this is set (asking
+   * twice at once makes no sense: the second tap could only ever dedupe
+   * away or return the same cached answer the first one is already
+   * fetching), and the one matching button shows its own loading state.
+   */
+  readonly wordActionLoading = input<WordActionKind | null>(null);
 
   readonly chatOpen = input(false);
   readonly chatMessages = input<readonly ChatMessage[]>([]);

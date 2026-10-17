@@ -269,6 +269,28 @@ export interface WordLookupApi {
   known_status: string;
 }
 
+/**
+ * The word popover's three LLM helps (issue #10), `POST /api/sessions/{id}/
+ * assist`'s own kind -- narrower than `WordActionKind` (`features/read/
+ * reading/reading.types.ts`), which still carries `'tutor'` for the design
+ * (#11's own, separate endpoint once it exists).
+ */
+export type AssistKindApi = 'explain' | 'translate' | 'grammar';
+
+export interface AssistPayload {
+  kind: AssistKindApi;
+  token_id: string;
+}
+
+/** Mirrors the backend's `AssistResult`. */
+export interface AssistResultApi {
+  kind: AssistKindApi;
+  answer: string;
+  cached: boolean;
+  counted: boolean;
+  weight: number;
+}
+
 export interface AnswerPayload {
   question_index: number;
   option_index: number;
@@ -299,6 +321,10 @@ export interface SessionSummaryApi {
   questions_total: number;
   active_ms: number;
   looked_up_words: LookedUpWordApi[];
+  /** Sum of this session's own assist (issue #10) generation costs -- 0 for
+   *  a cache hit. Not shown anywhere yet (History/Stats are still
+   *  placeholders, #12+); kept here so this type matches the backend. */
+  assists_cost_usd: number;
 }
 
 /** Mirrors the backend's `ReadingPaceOut`, `GET /api/reading/pace`. */

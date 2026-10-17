@@ -5,14 +5,17 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiErrorState } from 'sumi-ui/layout';
 
-import { Api } from '../../core/api';
+import { Api, ApiError } from '../../core/api';
 import type { ApiToken, SessionOutApi, SessionSummaryApi } from '../../core/api.types';
 import type { ComprehensionQuestion } from '../../features/read/questions/questions.types';
 import { QuestionsScreen } from '../../features/read/questions/questions-screen';
 import type {
   ReadingTextData,
   ReadingWord,
+  WordActionKind,
+  WordActionOption,
   WordActivateEvent,
+  WordAnswer,
   WordDetails,
 } from '../../features/read/reading/reading.types';
 import { ReadingScreen } from '../../features/read/reading/reading-screen';
@@ -27,6 +30,20 @@ type SessionPageState = 'loading' | 'reading' | 'questions' | 'finished' | 'erro
 const TICK_INTERVAL_MS = 1000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart', 'wheel'] as const;
+
+/**
+ * The word popover's three real action buttons (issue #10) -- labels and
+ * weights exactly as the approved design/fixture (`preview/fixtures/
+ * word-lookup.fixture.ts`'s `WORD_ACTIONS`) show them, minus "Ask tutor"
+ * (#11 stays hidden here: a button for a chat that does not exist yet
+ * would be worse than no button, same reasoning `chatEnabled` already
+ * documents).
+ */
+const WORD_ACTIONS: readonly WordActionOption[] = [
+  { kind: 'explain', label: 'Explain word', weight: 2 },
+  { kind: 'translate', label: 'Translate sentence', weight: 3 },
+  { kind: 'grammar', label: 'Explain grammar', weight: 3 },
+];
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -66,6 +83,8 @@ export class ReadSessionPage {
   protected readonly paused = signal(false);
   protected readonly selectedWordId = signal<string | null>(null);
   protected readonly selectedWord = signal<WordDetails | null>(null);
+  protected readonly wordAnswer = signal<WordAnswer | null>(null);
+  protected readonly wordActionLoading = signal<WordActionKind | null>(null);
 
   private tracker: ActiveTimeTracker | null = null;
   private tickHandle: ReturnType<typeof setInterval> | null = null;
@@ -253,6 +272,12 @@ export class ReadSessionPage {
 
     this.selectedWordId.set(word.id);
     this.selectedWord.set({ word: token.surface, meanings: [], note: 'Loading…' });
+    // A new word clears the previous one's answer and any in-flight assist
+    // (its own `.then`/`.catch` below still runs, but the `selectedWordId`
+    // check in each discards whatever it resolves to) -- brief: "Opening
+    // another word clears the answer."
+    this.wordAnswer.set(null);
+    this.wordActionLoading.set(null);
 
     this.api.lookupWord(session.id, token.id).then(
       (result) => {
@@ -265,6 +290,10 @@ export class ReadSessionPage {
           jlptLevel: result.jlpt ? `N${result.jlpt}` : undefined,
           meanings: result.meanings,
           knownStatus: result.known_status,
+          // The three LLM helps (issue #10) -- only once the lookup has
+          // loaded, per the brief, so the popover never offers them
+          // against a word it has not even resolved yet.
+          actions: WORD_ACTIONS,
         });
       },
       () => {
@@ -294,6 +323,49 @@ export class ReadSessionPage {
   protected onCloseWord(): void {
     this.selectedWordId.set(null);
     this.selectedWord.set(null);
+    this.wordAnswer.set(null);
+    this.wordActionLoading.set(null);
+  }
+
+  /**
+   * Explain word / Translate sentence / Explain grammar (issue #10). Only
+   * ever called for one of those three -- `'tutor'` is never offered as a
+   * real action button (see `WORD_ACTIONS` above) -- but `WordActionKind`
+   * itself still carries it for the design, hence the guard rather than a
+   * narrower parameter type.
+   */
+  protected onWordAction(kind: WordActionKind): void {
+    if (kind === 'tutor') {
+      return;
+    }
+    const session = this.session();
+    const tokenId = this.selectedWordId();
+    if (!session || !tokenId || this.wordActionLoading() !== null) {
+      return; // Already loading one -- the popover disables the buttons too.
+    }
+
+    this.wordActionLoading.set(kind);
+    this.api.assist(session.id, { kind, token_id: tokenId }).then(
+      (result) => {
+        // A request for a word the reader has since left must not touch the
+        // current word's loading state or answer.
+        if (this.selectedWordId() === tokenId) {
+          this.wordActionLoading.set(null);
+          this.wordAnswer.set({ kind: result.kind, text: result.answer });
+        }
+      },
+      (error: unknown) => {
+        if (this.selectedWordId() === tokenId) {
+          this.wordActionLoading.set(null);
+          // `ApiError`'s own message already reads like a sentence (e.g.
+          // "The server refused: No OpenAI API key is configured.") --
+          // shown in the answer block itself, never a page-level error
+          // (brief, issue #10).
+          const message = error instanceof ApiError ? error.message : 'This could not be answered.';
+          this.wordAnswer.set({ kind, text: message, isError: true });
+        }
+      },
+    );
   }
 
   protected onDoneReading(): void {
