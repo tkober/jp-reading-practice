@@ -6,10 +6,13 @@
       [paused]="paused()"
       [selectedWord]="selectedWord()"
       [selectedWordId]="selectedWordId()"
+      [wordAnswer]="wordAnswer()"
+      [wordActionLoading]="wordActionLoading()"
       [chatEnabled]="false"
       (wordActivate)="onWordActivate($event)"
       (readingPeeked)="onReadingPeeked($event)"
       (closeWord)="onCloseWord()"
+      (wordAction)="onWordAction($event)"
       (pauseToggle)="onPauseToggle()"
       (doneReading)="onDoneReading()"
     />

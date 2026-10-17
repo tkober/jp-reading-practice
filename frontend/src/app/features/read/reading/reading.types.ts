@@ -56,6 +56,10 @@ export interface WordDetails {
 export interface WordAnswer {
   kind: WordActionKind;
   text: string;
+  /** `true` when `text` is an error message (no OpenAI key, an upstream
+   *  failure -- issue #10) rather than the tutor's actual answer, shown in
+   *  the answer block with error styling, never as a page-level error. */
+  isError?: boolean;
 }
 
 // `sumi-side-panel` (sumi-ui#96, `sumi-ui/layout`) is likewise just the

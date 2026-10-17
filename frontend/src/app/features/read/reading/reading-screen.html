@@ -146,7 +146,7 @@
         }
 
         @if (wordAnswer(); as currentAnswer) {
-          <div class="word-answer">
+          <div class="word-answer" [class.word-answer--error]="currentAnswer.isError">
             <p class="word-answer__kind">{{ currentAnswer.kind }}</p>
             <p class="word-answer__text">{{ currentAnswer.text }}</p>
           </div>
@@ -162,10 +162,16 @@
             sumiButton
             variant="secondary"
             size="sm"
+            [disabled]="wordActionLoading() !== null"
+            [attr.aria-busy]="wordActionLoading() === actionOption.kind"
             (click)="wordAction.emit(actionOption.kind)"
           >
-            {{ actionOption.label }}
-            <span class="word-actions__weight">+{{ actionOption.weight }}</span>
+            @if (wordActionLoading() === actionOption.kind) {
+              Thinking…
+            } @else {
+              {{ actionOption.label }}
+              <span class="word-actions__weight">+{{ actionOption.weight }}</span>
+            }
           </button>
         }
       </div>

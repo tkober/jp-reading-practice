@@ -5,6 +5,8 @@ import { firstValueFrom } from 'rxjs';
 import type {
   AnswerPayload,
   AnswerResultApi,
+  AssistPayload,
+  AssistResultApi,
   FinishReadingPayload,
   HelpPayload,
   HelpResultApi,
@@ -179,6 +181,19 @@ export class Api {
   lookupWord(id: number, tokenId: string): Promise<WordLookupApi> {
     return firstValueFrom(
       this.http.post<WordLookupApi>(`/api/sessions/${id}/lookups`, { token_id: tokenId }),
+    ).catch(rethrow);
+  }
+
+  /**
+   * Explain word / Translate sentence / Explain grammar (issue #10). A
+   * cache hit (`cached: true`) and a freshly generated answer come back
+   * through the same promise -- the caller does not need to tell them
+   * apart to render the result, only to decide whether a repeat ask is
+   * worth the wait (it never is: see `cached`).
+   */
+  assist(id: number, payload: AssistPayload): Promise<AssistResultApi> {
+    return firstValueFrom(
+      this.http.post<AssistResultApi>(`/api/sessions/${id}/assist`, payload),
     ).catch(rethrow);
   }
 
