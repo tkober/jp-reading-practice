@@ -28,6 +28,7 @@ COPY backend/app ./app
 COPY --from=jmdict-builder /build/app/data/jmdict.sqlite ./app/data/jmdict.sqlite
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/alembic ./alembic
+COPY backend/topics ./topics
 
 # DB_URL / DB_USER / DB_PASSWORD / DB_OWNER_USER / DB_OWNER_PASSWORD /
 # OPENAI_API_KEY / KANJI_TRAINER_MCP_URL / CORS_ORIGINS are read at runtime

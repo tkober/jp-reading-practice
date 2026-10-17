@@ -1,6 +1,45 @@
-<sumi-page title="Topics">
-  <sumi-empty-state title="No topics set up yet" companion="fukurou">
-    Preset topics to generate texts from, like current events or history, will show up here for you
-    to pick from when generating a text.
-  </sumi-empty-state>
-</sumi-page>
+@if (failed()) {
+  <sumi-page title="Topics">
+    <sumi-error-state title="Can't reach the server" companion="fukurou" pattern="none">
+      Your topics are safe either way.
+      <button sumiErrorAction type="button" sumiButton variant="secondary" (click)="reload()">
+        Try again
+      </button>
+    </sumi-error-state>
+  </sumi-page>
+} @else if (mode() === 'list') {
+  @if (loadError(); as error) {
+    <sumi-page title="Topics">
+      <sumi-banner tone="error">{{ error }}</sumi-banner>
+    </sumi-page>
+  } @else {
+    <app-topics-list-screen
+      [topics]="summaries()"
+      (newTopic)="openNewTopic()"
+      (editTopic)="openTopic($event)"
+    />
+  }
+} @else {
+  @if (saveMessage(); as message) {
+    <div class="topics-editor-banner">
+      <sumi-banner [tone]="saveState() === 'error' ? 'error' : 'success'">{{ message }}</sumi-banner>
+    </div>
+  }
+  <app-topic-edit-screen
+    [draft]="draft()"
+    [showRssFeeds]="showRssFeeds()"
+    [isBuiltin]="isBuiltin()"
+    [isCustomized]="isCustomized()"
+    [canDelete]="canDelete()"
+    (nameChange)="setName($event)"
+    (glyphChange)="setGlyph($event)"
+    (styleChange)="setStyle($event)"
+    (promptChange)="setPrompt($event)"
+    (rssFeedAdd)="addFeed($event)"
+    (rssFeedRemove)="removeFeed($event)"
+    (save)="save()"
+    (reset)="resetToBuiltin()"
+    (delete)="deleteTopic()"
+    (back)="backToList()"
+  />
+}

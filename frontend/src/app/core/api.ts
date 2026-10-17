@@ -2,7 +2,15 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-import type { KanjiTrainerStatus, ModelCatalog, Settings, SettingsPatch } from './api.types';
+import type {
+  KanjiTrainerStatus,
+  ModelCatalog,
+  Settings,
+  SettingsPatch,
+  TopicApi,
+  TopicCreatePayload,
+  TopicUpdatePayload,
+} from './api.types';
 
 /**
  * What every call below rethrows as, carrying the original HTTP status
@@ -72,6 +80,32 @@ export class Api {
         return rethrow(error);
       },
     );
+  }
+
+  // --- topics (issue #8) ---------------------------------------------------
+
+  topics(): Promise<TopicApi[]> {
+    return this.get('/api/topics');
+  }
+
+  topic(id: number): Promise<TopicApi> {
+    return this.get(`/api/topics/${id}`);
+  }
+
+  createTopic(payload: TopicCreatePayload): Promise<TopicApi> {
+    return firstValueFrom(this.http.post<TopicApi>('/api/topics', payload)).catch(rethrow);
+  }
+
+  updateTopic(id: number, payload: TopicUpdatePayload): Promise<TopicApi> {
+    return firstValueFrom(this.http.put<TopicApi>(`/api/topics/${id}`, payload)).catch(rethrow);
+  }
+
+  resetTopic(id: number): Promise<TopicApi> {
+    return firstValueFrom(this.http.post<TopicApi>(`/api/topics/${id}/reset`, {})).catch(rethrow);
+  }
+
+  deleteTopic(id: number): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(`/api/topics/${id}`)).catch(rethrow);
   }
 
   // --- plumbing -------------------------------------------------------------

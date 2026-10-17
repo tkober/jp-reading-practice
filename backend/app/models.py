@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -175,3 +177,125 @@ class DictionaryEntry(BaseModel):
     reading: str
     pos: list[str] = Field(default_factory=list)
     glosses: list[str] = Field(default_factory=list)
+
+
+# --- Topics (issue #8) -------------------------------------------------------
+
+TopicStyle = Literal["casual", "polite", "formal"]
+
+
+class TopicOut(BaseModel):
+    """One topic, as the Topics list/editor sees it."""
+
+    id: int
+    slug: str
+    title: str
+    glyph: str
+    prompt: str
+    default_style: TopicStyle
+    feed_urls: list[str] = Field(default_factory=list)
+    sort_order: int
+    is_builtin: bool
+    is_customized: bool
+
+
+class TopicCreate(BaseModel):
+    """A new custom topic. Always `is_builtin=False`, `is_customized=True` --
+    there is nothing to "reset" a topic nobody shipped a file for."""
+
+    title: str
+    glyph: str = ""
+    prompt: str
+    default_style: TopicStyle = "casual"
+    feed_urls: list[str] = Field(default_factory=list)
+
+
+class TopicUpdate(BaseModel):
+    """Patch for a topic. Every field optional: omitting one leaves it
+    unchanged. Saving always marks the row `is_customized` (see
+    `api/topics.py`)."""
+
+    title: str | None = None
+    glyph: str | None = None
+    prompt: str | None = None
+    default_style: TopicStyle | None = None
+    feed_urls: list[str] | None = None
+
+
+# --- Text generation (issue #8) ----------------------------------------------
+
+
+class JlptMixTarget(BaseModel):
+    """Target share (0..1) of content words at each JLPT level -- the
+    preset's (or caller's) *target*, as opposed to `Metrics.jlpt_mix`'s
+    *measured* share of the same shape."""
+
+    n5: float = 0.0
+    n4: float = 0.0
+    n3: float = 0.0
+    n2: float = 0.0
+    n1: float = 0.0
+
+
+class TextOverrides(BaseModel):
+    """Free-form overrides on top of a preset -- every field optional."""
+
+    style: TopicStyle | None = None
+    unknown_kanji_target: float | None = None
+    jlpt_mix: JlptMixTarget | None = None
+
+
+class TextCreateRequest(BaseModel):
+    """`POST /api/texts`'s body.
+
+    `topic_slug` is either a real topic's slug, or the literal `"surprise"`
+    sentinel, which picks a random topic at generation time (the stored
+    text then names the topic it actually landed on -- see `targets` below).
+    """
+
+    topic_slug: str
+    length: Literal["short", "medium", "long"]
+    preset: Literal["easy", "stretch", "challenge"]
+    overrides: TextOverrides | None = None
+
+
+class QuestionOut(BaseModel):
+    """A comprehension question, without its answer -- `answer_index` never
+    reaches the browser; issue #9 checks answers server-side instead."""
+
+    question: str
+    options: list[str] = Field(default_factory=list)
+
+
+class TextTargets(BaseModel):
+    """What generation was actually asked for, after resolving the preset,
+    the topic's own default style, and any overrides -- `topic_slug` is the
+    *resolved* topic (never `"surprise"` itself)."""
+
+    topic_slug: str
+    length: Literal["short", "medium", "long"]
+    preset: Literal["easy", "stretch", "challenge"]
+    unknown_kanji_target: float
+    jlpt_mix: JlptMixTarget
+    style: TopicStyle
+
+
+class TextOut(BaseModel):
+    """`POST /api/texts` and `GET /api/texts/{id}`'s response.
+
+    `paragraphs` are the stored `TextAnalysis.paragraphs` (full analysis
+    tokens, as of generation, for the reading screen to render directly);
+    `metrics` are the *measured* numbers for the same text, as opposed to
+    `targets`, what was asked for.
+    """
+
+    id: int
+    title: str
+    paragraphs: list[Paragraph]
+    questions: list[QuestionOut]
+    metrics: Metrics
+    targets: TextTargets
+    attempts: int
+    model: str
+    cost_usd: float | None = None
+    kanji_trainer_error: str | None = None
