@@ -413,8 +413,102 @@ reaches the network, on top of the backend's own per-session dedupe. A tap
 which both logs a `word_lookup` help and returns the dictionary/JLPT/Kanji
 Trainer details the popover shows; the popover opens immediately with a
 "Loading…" placeholder (`WordDetails`, no `actions`) and is replaced once
-the response lands, or on error if it does not. `GET /api/sessions/{id}/
-summary`'s `looked_up_words` is fed straight into `SummaryScreen`.
+the response lands, or on error if it does not -- only once it lands does
+`WordDetails.actions` get the three LLM helps below, never while the
+lookup itself is still pending. `GET /api/sessions/{id}/summary`'s
+`looked_up_words` is fed straight into `SummaryScreen`.
+
+### LLM helps: Explain word / Translate sentence / Explain grammar (issue #10)
+
+The word popover's three action buttons (`WORD_ACTIONS`, `pages/read/
+read-session.ts`) -- labels and weights exactly as the approved design/
+preview fixture (`preview/fixtures/word-lookup.fixture.ts`'s own
+`WORD_ACTIONS`) show them: **Explain word** (+2), **Translate sentence**
+(+3), **Explain grammar** (+3). "Ask tutor" stays hidden (`WordActionKind`
+still carries `'tutor'` for the design, but `onWordAction` guards it away
+and the real action list never offers it) -- #11's own scope. There is also
+no partial-sentence selection ("Teilsatz per Markieren") yet: on the phone
+a long press already peeks the reading, so a text-selection gesture would
+collide with it -- a candidate follow-up, not attempted here. "Translate
+sentence"/"Explain grammar" act on the sentence *containing* the tapped
+word, not the word itself.
+
+**`app/sentences.py`** is the one place that decides where a sentence
+ends: `split_sentences(paragraph_index, tokens)` takes `(token_id,
+surface)` pairs (either `Token` or the plain dict a `GeneratedText.
+analysis` row stores both work, since only those two fields are read) and
+groups them into `Sentence`s -- a sentence ends right after `。！？!?` and
+any closing bracket/quote (`」』）`) directly following it, so
+「そうだ。」is one sentence, not two. `find_sentence()` locates the one
+containing a given token id. A sentence key has the same `"<paragraph>-<n>"`
+shape as `Token.id` (`"<paragraph_index>-<sentence_index>"`, never compared
+to a token id directly, only each used as its own cache/dedupe key).
+
+**`POST /api/sessions/{id}/assist` `{kind: "explain"|"translate"|"grammar",
+token_id}`** -> `{kind, answer, cached, counted, weight}` (`api/
+sessions.py`). Only in status `reading` (409 otherwise, same as every other
+reading-phase endpoint); `explain` only for an `is_word` token (422 on a
+particle) -- `translate`/`grammar` accept any token, since they act on its
+sentence. The *target* `HelpEvent`/`help_answers` dedupe on is the lemma
+for `explain` (a word kind, same as `reading_peek`/`word_lookup`) or the
+sentence key for `translate`/`grammar` (a sentence kind) -- see
+`db.HelpEvent`'s docstring.
+
+**The cache (`help_answers`)**: one row per `(text_id, kind, target)` --
+the same question about the same text is answered once *ever*, reused by
+any later session, even a different learner re-reading the same generated
+text. A cache hit skips the OpenAI call entirely (`cached: true` in the
+response) and this session's own help event still gets logged (so
+`helps_per_100_words` counts it) but at `cost_usd: 0.0` -- only the
+session whose own request actually generated the answer carries its real
+cost. The help event itself is still deduped per `(session_id, kind,
+target)`, exactly like `reading_peek`/`word_lookup`: a repeated ask of the
+same target in the same session is `counted: false` regardless of
+`cached`.
+
+**Prompts (`app/help_prompts.py`)**: one shared tutor-role frame (patient,
+English-speaking-learner-calibrated, plain English prose, no markdown, no
+romaji, Japanese quoted as written), plus three builders that each give
+the model the *whole* text as context, then the specific target:
+`build_explain_word_instructions` (meaning in this sentence, dictionary
+form + what the inflection does, a nuance/collocation note if relevant,
+<=80 words), `build_translate_sentence_instructions` (a natural English
+translation, then one short line on anything a learner would likely
+misread, <=60 words), `build_explain_grammar_instructions` (the 1-3
+grammar points that actually carry the sentence's meaning, <=120 words).
+The word limits are asked for, not enforced in code -- same spirit as the
+length target in `prompts.py`'s own generation frame.
+
+**The call itself (`app/assist.py`)** is a plain chat completion against
+`RuntimeConfig.help_model` -- no Structured Outputs (unlike
+`generation.py`'s forced JSON schema): there is no shape to enforce beyond
+"short English text", which the prompt's own word limits already ask for.
+Same `httpx`/`GenerationError` status convention as generation (409 no
+key, 502 for anything upstream, a refusal, or an empty response), but a
+60s timeout rather than generation's 120s margin -- one short call does not
+need as much room. Cost comes from `pricing.cost_usd()` against
+`config.help_model`, `null` for a model `pricing.MODEL_RATES` does not
+know (same convention as `GeneratedText.cost_usd`).
+
+**`GET /api/sessions/{id}/summary`'s `assists_cost_usd`** sums
+`HelpEvent.cost_usd` over the session -- `NULL` for `reading_peek`/
+`word_lookup` (not an LLM call) and `0.0` for a cached assist both count as
+0, so only an assist this session's own request actually generated adds
+anything. Not shown on screen yet (History/Stats are still placeholders,
+issue #12+); the frontend's `SessionSummaryApi` carries the field purely
+so the type matches the backend.
+
+**Frontend wiring (`pages/read/read-session.ts`)**: once a word's lookup
+resolves, `WordDetails.actions` gets `WORD_ACTIONS`; a click on one calls
+`Api.assist()`, disables all three buttons (`ReadingScreen.
+wordActionLoading`, only the clicked one shows "Thinking…") until it
+resolves, and renders the answer in `WordAnswer` (the popover's existing
+answer block). A 409 (no key) or 502 (upstream) shows as that block's own
+error text (`WordAnswer.isError`, red via `--sumi-wrong`) rather than a
+page-level error -- `ApiError`'s own message (already a full sentence,
+`core/api.ts`'s `rethrow()`) is shown verbatim. Opening a different word,
+or closing the popover, clears both the answer and any in-flight loading
+state.
 
 ### Backend: `reading_sessions` / `help_events` (issue #9)
 
@@ -428,17 +522,27 @@ text's own `questions`; `comprehension_correct` is `null` until
 `finished`, then the number of questions answered correctly.
 
 `help_events`: one row per *first* occurrence of a help kind for a given
-word in a given session -- the unique constraint on `(session_id, kind,
-lemma)` is the entire dedupe (`ON CONFLICT DO NOTHING`; a repeat returns
-`counted: false`, never an error). `kind` is a plain string column, not a
-DB enum, specifically so issue #10 can add `explain`/`translate`/
-`grammar`/`tutor` without a schema change. `helps.py` is the one place
-every weight lives, including those four, unused until #10 wires them up
-(per the concept, those are counted per word per *question*, not per
-session -- #10's own job, not this module's). `token_id` rides along next
-to the dedupe key (`lemma`) so the summary's `looked_up_words` can show
-the exact occurrence's reading (`Token.lemma_reading`, see below) without
-a second join key.
+*target* in a given session -- the unique constraint on `(session_id,
+kind, target)` is the entire dedupe (`ON CONFLICT DO NOTHING`; a repeat
+returns `counted: false`, never an error). `kind` is a plain string
+column, not a DB enum, specifically so a later kind (`tutor`, issue #11)
+can be added without a schema change. `helps.py` is the one place every
+weight lives. `target` (issue #10; backfilled from the pre-existing
+`lemma` column, which is exactly what every row before #10 deduped on) is
+the lemma for a word kind (`reading_peek`, `word_lookup`, `explain`) or
+the sentence key (`sentences.Sentence.key`) for a sentence kind
+(`translate`, `grammar`) -- see "LLM helps" above. `token_id`/`lemma`/
+`surface` ride along unconditionally (not just for word kinds) so the
+summary can always join back to the exact occurrence that triggered the
+help; `cost_usd` (issue #10) is `NULL` for a non-LLM help, `0.0` for a
+cached assist, the real cost only for one this session's own request
+generated -- see `assists_cost_usd` above.
+
+`help_answers` (issue #10): the assist cache, one row per `(text_id, kind,
+target)` -- `answer`/`model`/`usage`/`cost_usd` describe the one
+generation call that produced it. Unlike `help_events`, this table has no
+notion of session at all: it is shared across every session that ever
+reads that text.
 
 **`Token.lemma_reading`** (`models.py`, issue #7's `Token` gaining one more
 field) is the lemma's own reading (`RawToken.lemma_reading`, unidic's
@@ -560,10 +664,14 @@ HTTP 421.
 - History and Stats are still placeholder pages -- issue #12 and later give
   them something real to show, built on the `reading_sessions`/`help_events`
   tables issue #9 added.
-- The word popover shows no action buttons and the session bar shows no chat
-  action -- issue #10 (Explain/Translate/Grammar/Tutor) and #11 (the tutor
-  chat) wire those up; `ReadingScreen.chatEnabled`/`WordDetails.actions` are
-  already there, just unused from `/read/:sessionId` until then.
+- The session bar shows no chat action -- issue #11 (the tutor chat) wires
+  it up; `ReadingScreen.chatEnabled` is already there, just unused from
+  `/read/:sessionId` until then. The word popover's other action, "Ask
+  tutor", is the same story (`WordActionKind` still carries it).
+- No partial-sentence selection ("Teilsatz per Markieren") for Translate/
+  Explain grammar -- a candidate follow-up, deliberately left out of issue
+  #10 because a long-press already peeks the reading on the phone, and a
+  text-selection gesture would collide with it.
 - Stretch is a static preset, not yet adaptive to the learner's own progress
   (issue #13).
 - No authentication. Single user, LAN only -- the same assumption the other
