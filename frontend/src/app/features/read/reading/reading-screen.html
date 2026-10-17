@@ -47,7 +47,7 @@
     </div>
   </ng-template>
 
-  <div class="columns" [class.columns--chat-open]="chatOpen()">
+  <div class="columns">
     <div class="text-column">
       <!--
         Paused blurs the text instead of hiding it — strongly enough that
@@ -64,11 +64,10 @@
           [attr.inert]="paused() ? '' : null"
         >
           <h1 class="title" lang="ja">{{ text().titleJapanese }}</h1>
-          <proto-tappable-ruby-text
+          <sumi-reading-text
             [paragraphs]="text().paragraphs"
             [selectedWordId]="selectedWordId()"
-            [forcePeekWordId]="previewForcePeekWordId()"
-            (wordActivate)="wordActivate.emit($event)"
+            (wordActivated)="onWordActivate($event)"
             (readingPeeked)="readingPeeked.emit($event)"
           />
         </div>
@@ -88,21 +87,96 @@
       </div>
     </div>
 
-    @if (chatOpen()) {
-      <proto-side-panel
-        [messages]="chatMessages()"
-        [sending]="chatSending()"
-        (close)="chatToggle.emit()"
-        (send)="chatSend.emit($event)"
-      />
-    }
+    <sumi-side-panel
+      [open]="chatOpen()"
+      (openChange)="onChatOpenChange($event)"
+      title="Ask about this text"
+    >
+      <div class="chat-messages">
+        @for (message of chatMessages(); track $index) {
+          <p class="chat-message" [class.chat-message--user]="message.role === 'user'" lang="ja">
+            {{ message.text }}
+          </p>
+        }
+        @if (chatSending()) {
+          <p class="chat-message chat-message--pending" aria-live="polite">…</p>
+        }
+      </div>
+
+      <div sumiSidePanelFooter>
+        <textarea
+          #chatInput
+          sumiTextarea
+          sumiSubmitOnEnter
+          rows="2"
+          placeholder="Ask about this text…"
+          (sumiSubmitOnEnter)="onChatSend($event, chatInput)"
+        ></textarea>
+        <div class="chat-send-row">
+          <button
+            type="button"
+            sumiButton
+            variant="primary"
+            size="sm"
+            [disabled]="chatSending()"
+            (click)="onChatSend(chatInput.value, chatInput)"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </sumi-side-panel>
   </div>
 
-  <proto-word-popover-sheet
-    [word]="selectedWord()"
-    [anchorRect]="selectedWordAnchor()"
-    [answer]="wordAnswer()"
-    (close)="closeWord.emit()"
-    (action)="wordAction.emit($event)"
-  />
+  <sumi-popover [open]="selectedWord() !== null" (openChange)="onPopoverOpenChange($event)" [anchor]="anchorEl()">
+    <!-- Each slot needs its own @if with exactly one root node, or Angular
+         cannot tell which node the slot selector should match (NG8011) —
+         hence three separate blocks on the same `selectedWord()` guard
+         rather than one that mixes slotted and default-slot content. -->
+    @if (selectedWord(); as details) {
+      <div sumiPopoverHeader class="word-header">
+        <span class="word-header__word" lang="ja">{{ details.word }}</span>
+        @if (details.reading && details.reading !== details.word) {
+          <span class="word-header__reading" lang="ja">{{ details.reading }}</span>
+        }
+        @if (details.kind === 'grammar') {
+          <sumi-badge tone="neutral">Grammar</sumi-badge>
+        } @else if (details.jlptLevel) {
+          <sumi-badge tone="accent">{{ details.jlptLevel }}</sumi-badge>
+        }
+      </div>
+    }
+
+    @if (selectedWord(); as details) {
+      <div class="word-body">
+        @if (details.kind !== 'grammar' && details.knownStatus) {
+          <p class="word-known-status">{{ details.knownStatus }}</p>
+        }
+
+        <ul class="word-meanings">
+          @for (meaning of details.meanings; track meaning) {
+            <li>{{ meaning }}</li>
+          }
+        </ul>
+
+        @if (wordAnswer(); as currentAnswer) {
+          <div class="word-answer">
+            <p class="word-answer__kind">{{ currentAnswer.kind }}</p>
+            <p class="word-answer__text">{{ currentAnswer.text }}</p>
+          </div>
+        }
+      </div>
+    }
+
+    @if (selectedWord(); as details) {
+      <div sumiPopoverActions class="word-actions">
+        @for (actionOption of details.actions; track actionOption.kind) {
+          <button type="button" sumiButton variant="secondary" size="sm" (click)="wordAction.emit(actionOption.kind)">
+            {{ actionOption.label }}
+            <span class="word-actions__weight">+{{ actionOption.weight }}</span>
+          </button>
+        }
+      </div>
+    }
+  </sumi-popover>
 </div>

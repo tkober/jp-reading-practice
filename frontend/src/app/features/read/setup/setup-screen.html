@@ -15,10 +15,14 @@
 
   <sumi-card>
     <h2 sumiCardHeader>Topic</h2>
-    <proto-topic-tile-picker
-      [topics]="topics()"
-      [selectedId]="selectedTopicId()"
-      (select)="topicSelect.emit($event)"
+    <!-- `sumi-tile-picker`'s `value` is a plain `T` (`model<T>()`, no null
+         variant) -- `?? ''` stands in for "nothing selected yet" since no
+         real topic id is ever empty, same spirit as the picker's own
+         "no selection → focus the first tile" fallback. -->
+    <sumi-tile-picker
+      [options]="tileOptions()"
+      [value]="selectedTopicId() ?? ''"
+      (valueChange)="topicSelect.emit($event)"
     />
   </sumi-card>
 
@@ -67,7 +71,11 @@
 
         <div class="field">
           <span class="field-label">JLPT mix</span>
-          <proto-jlpt-multi-slider [shares]="jlptMix()" (sharesChange)="jlptMixChange.emit($event)" />
+          <sumi-share-slider
+            ariaLabel="JLPT mix"
+            [value]="jlptSegments()"
+            (valueChange)="onJlptSegmentsChange($event)"
+          />
         </div>
 
         <div class="field">

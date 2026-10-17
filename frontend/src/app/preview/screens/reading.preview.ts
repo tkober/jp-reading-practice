@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, afterNextRender, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ReadingScreen } from '../../features/read/reading/reading-screen';
 import type {
@@ -6,11 +6,10 @@ import type {
   ReadingWord,
   WordActionKind,
   WordActionOption,
-  WordAnchorRect,
   WordAnswer,
   WordDetails,
+  WordActivateEvent,
 } from '../../features/read/reading/reading.types';
-import type { WordActivateEvent } from '../../proto/tappable-ruby-text/tappable-ruby-text';
 import { READING_TEXT, findWordByText } from '../fixtures/reading-text.fixture';
 import {
   CHAT_MESSAGES,
@@ -29,13 +28,14 @@ const DEFAULT_ACTIONS: readonly WordActionOption[] = [
   { kind: 'tutor', label: 'Ask tutor', weight: 3 },
 ];
 
-// The real, measured desktop (1280px) position of each anchored word in
-// `READING_TEXT` — matches where `reading-word`/`reading-answer` actually
-// render it, so the popover's "prefer below, flip above, never cover the
-// word" logic (see `WordPopoverSheet`) has a real rect to react to instead
-// of a guess that could land anywhere relative to the real text.
-const NURETEMO_ANCHOR: WordAnchorRect = { x: 494, y: 477, width: 88, height: 32 };
-const GRAMMAR_TOKEN_ANCHOR: WordAnchorRect = { x: 582, y: 477, width: 286, height: 32 };
+/** Finds the rendered word span for a word's exact surface text, the same
+ *  way `sumi-reading-text`'s own words are told apart in the DOM (there is
+ *  no `data-word-id`) — see the callers' doc comments for why this exists
+ *  at all. */
+function findWordSpan(text: string): HTMLElement | null {
+  const spans = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]'));
+  return spans.find((span) => span.textContent?.trim().startsWith(text)) ?? null;
+}
 
 /** One component behind six `/preview/reading*` routes — see
  *  `SetupPreview`'s doc comment for why. */
@@ -46,9 +46,7 @@ const GRAMMAR_TOKEN_ANCHOR: WordAnchorRect = { x: 582, y: 477, width: 286, heigh
       [text]="text"
       [elapsedLabel]="elapsedLabel()"
       [paused]="paused()"
-      [previewForcePeekWordId]="forcePeekWordId()"
       [selectedWord]="selectedWord()"
-      [selectedWordAnchor]="selectedWordAnchor()"
       [selectedWordId]="selectedWordId()"
       [wordAnswer]="wordAnswer()"
       [chatOpen]="chatOpen()"
@@ -79,15 +77,9 @@ export class ReadingPreview {
   protected readonly text = READING_TEXT;
   protected readonly elapsedLabel = signal('3:12');
   protected readonly paused = signal(false);
-  /** Preview-only — see `ReadingScreen.previewForcePeekWordId`. Statically
-   *  shows a known word's reading peeking, for `/preview/reading-peek`: a
-   *  direct page load has no real hover/long-press to show, see the index
-   *  note next to that route for how the real gesture works. */
-  protected readonly forcePeekWordId = signal<string | null>(null);
   protected readonly lastPeek = signal<ReadingWord | null>(null);
 
   protected readonly selectedWord = signal<WordDetails | null>(null);
-  protected readonly selectedWordAnchor = signal<WordAnchorRect | null>(null);
   protected readonly selectedWordId = signal<string | null>(null);
   protected readonly wordAnswer = signal<WordAnswer | null>(null);
 
@@ -99,34 +91,51 @@ export class ReadingPreview {
 
   constructor() {
     const variant = (inject(ActivatedRoute).snapshot.data['variant'] ?? 'default') as ReadingPreviewVariant;
-    if (variant === 'word') {
-      this.selectedWord.set(WORD_DETAILS_PRIMARY);
-      this.selectedWordAnchor.set(NURETEMO_ANCHOR);
-      this.selectedWordId.set(findWordByText('濡れても').id);
-    } else if (variant === 'answer') {
-      this.selectedWord.set(WORD_DETAILS_GRAMMAR);
-      this.selectedWordAnchor.set(GRAMMAR_TOKEN_ANCHOR);
-      this.selectedWordId.set(GRAMMAR_ANCHOR_WORD.id);
-      this.wordAnswer.set(WORD_ANSWER_GRAMMAR);
-    } else if (variant === 'chat') {
+    if (variant === 'chat') {
       this.chatOpen.set(true);
       this.chatMessages.set(CHAT_MESSAGES);
-    } else if (variant === 'peek') {
-      this.forcePeekWordId.set(findWordByText('旅行').id);
     } else if (variant === 'paused') {
       this.paused.set(true);
+    } else if (variant === 'word' || variant === 'answer' || variant === 'peek') {
+      // `sumi-reading-text`'s `wordActivated` only carries a `DOMRect`
+      // snapshot (see `ReadingScreen.resolveAnchorElement`'s doc comment),
+      // and its hover/long-press peek has no preview-only override any
+      // more either (the old prototype's `forcePeekWordId` has no library
+      // equivalent) — both used to be driven by a dedicated preview-only
+      // input/anchor rect. Dispatching the *real* gesture on the rendered
+      // word span after the first render exercises the exact same code
+      // path a learner's tap/hover would, which is simpler than threading
+      // a second, preview-only bypass through `ReadingScreen` for a state
+      // a real interaction can already produce.
+      afterNextRender(() => this.simulateVariant(variant));
+    }
+  }
+
+  private simulateVariant(variant: 'word' | 'answer' | 'peek'): void {
+    if (variant === 'peek') {
+      const span = findWordSpan('旅行');
+      span?.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse', bubbles: true }));
+      return;
+    }
+
+    const targetWord = variant === 'word' ? findWordByText('濡れても') : GRAMMAR_ANCHOR_WORD;
+    const span = findWordSpan(targetWord.text);
+    span?.click();
+    // `onWordActivate` (below) just set a generic placeholder from the
+    // clicked word's own surface text/reading — replace it with this
+    // variant's curated fixture content, same as the old preview did
+    // before `selectedWordAnchor` existed to resolve from a real click.
+    if (variant === 'word') {
+      this.selectedWord.set(WORD_DETAILS_PRIMARY);
+    } else {
+      this.selectedWord.set(WORD_DETAILS_GRAMMAR);
+      this.wordAnswer.set(WORD_ANSWER_GRAMMAR);
     }
   }
 
   protected onWordActivate(event: WordActivateEvent): void {
     const word = event.word;
     this.selectedWordId.set(word.id);
-    this.selectedWordAnchor.set({
-      x: event.rect.x,
-      y: event.rect.y,
-      width: event.rect.width,
-      height: event.rect.height,
-    });
     this.selectedWord.set({
       word: word.text,
       reading: word.reading ?? word.text,
@@ -143,7 +152,6 @@ export class ReadingPreview {
 
   protected onCloseWord(): void {
     this.selectedWord.set(null);
-    this.selectedWordAnchor.set(null);
     this.selectedWordId.set(null);
     this.wordAnswer.set(null);
   }

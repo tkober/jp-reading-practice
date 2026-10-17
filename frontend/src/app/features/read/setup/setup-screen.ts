@@ -4,20 +4,22 @@ import { SumiIcon } from 'sumi-ui/core';
 import {
   SumiButtonDirective,
   SumiSegmentedControl,
+  SumiShareSlider,
   SumiSliderDirective,
+  SumiTilePicker,
   type SumiSegmentedOption,
+  type SumiShareSegment,
+  type SumiTileOption,
 } from 'sumi-ui/forms';
 import { SumiBanner, SumiCard, SumiPage } from 'sumi-ui/layout';
 import {
-  JlptMultiSlider,
-  type JlptShares,
-} from '../../../proto/jlpt-multi-slider/jlpt-multi-slider';
-import { TopicTilePicker, type TopicTileOption } from '../../../proto/topic-tile-picker/topic-tile-picker';
-import {
   READING_LENGTH_CHARS,
   READING_LENGTH_LABELS,
+  jlptSharesToSegments,
+  segmentsToJlptShares,
   summarizeDifficulty,
   type DifficultyPreset,
+  type JlptShares,
   type ReadingLength,
   type TextStyle,
 } from './setup.types';
@@ -56,13 +58,17 @@ const STYLE_OPTIONS: SumiSegmentedOption<TextStyle>[] = [
     SumiBanner,
     SumiCard,
     SumiPage,
-    JlptMultiSlider,
-    TopicTilePicker,
+    SumiTilePicker,
+    SumiShareSlider,
   ],
   host: { class: 'app-setup-screen' },
 })
 export class SetupScreen {
-  readonly topics = input.required<readonly TopicTileOption[]>();
+  /** Includes the "Surprise me" tile (`special: true`) as a normal option
+   *  — `sumi-tile-picker` (sumi-ui#98) has no dedicated slot for it the
+   *  way `proto/topic-tile-picker`'s own `surpriseId` input did, so the
+   *  host supplies it as part of the list, same as every other tile. */
+  readonly topics = input.required<readonly SumiTileOption<string>[]>();
   readonly selectedTopicId = input<string | null>(null);
 
   readonly length = input<ReadingLength>('medium');
@@ -89,6 +95,19 @@ export class SetupScreen {
   protected readonly lengthOptions = LENGTH_OPTIONS;
   protected readonly presetOptions = PRESET_OPTIONS;
   protected readonly styleOptions = STYLE_OPTIONS;
+
+  /** `sumi-tile-picker`'s `options` wants a mutable array; `topics()` stays
+   *  `readonly` for every other consumer, so this copies rather than
+   *  loosening the input's own type. */
+  protected readonly tileOptions = computed<SumiTileOption<string>[]>(() => [...this.topics()]);
+
+  /** `sumi-share-slider`'s own shape — see `setup.types.ts`'s conversion
+   *  helpers for why this app keeps the keyed `JlptShares` everywhere else. */
+  protected readonly jlptSegments = computed<SumiShareSegment[]>(() => jlptSharesToSegments(this.jlptMix()));
+
+  protected onJlptSegmentsChange(segments: SumiShareSegment[]): void {
+    this.jlptMixChange.emit(segmentsToJlptShares(segments));
+  }
 
   protected readonly estimateText = computed(() => {
     const chars = READING_LENGTH_CHARS[this.length()];

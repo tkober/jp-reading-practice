@@ -1,9 +1,8 @@
 // Preview-only fixture data — not the learner's own data, see the brief for
 // #6. ~600 characters at N4 level with a little N3, topic 旅行, polite
 // style, about 4% of the kanji words marked unknown.
-import type { ReadingParagraph, ReadingWord } from '../../proto/tappable-ruby-text/tappable-ruby-text';
 import type { ComprehensionQuestion } from '../../features/read/questions/questions.types';
-import type { ReadingTextData } from '../../features/read/reading/reading.types';
+import type { ReadingParagraph, ReadingTextData, ReadingWord } from '../../features/read/reading/reading.types';
 
 let nextWordId = 0;
 
