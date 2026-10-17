@@ -37,3 +37,12 @@ WEIGHTS: dict[str, int] = {
     "grammar": GRAMMAR_WEIGHT,
     "tutor": TUTOR_WEIGHT,
 }
+
+
+def helps_per_100_words(weight_sum: float, words: int) -> float:
+    """A session's `helps_per_100_words`: the sum of its `help_events.weight`
+    scaled to a 100-word text, `0.0` for a text with no content words at all
+    (never divides by zero). Shared by `api/sessions.py`'s `get_summary` and
+    `api/stats.py`'s History/Stats queries (issue #12) so both report the
+    exact same number for the exact same session."""
+    return round(weight_sum / words * 100, 1) if words else 0.0
