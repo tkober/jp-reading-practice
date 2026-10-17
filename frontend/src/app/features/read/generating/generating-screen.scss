@@ -1,0 +1,64 @@
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-3);
+  list-style: none;
+  margin: var(--sumi-space-4) 0 0 0;
+  padding: 0;
+  text-align: left;
+  min-width: 260px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-3);
+  color: var(--sumi-muted);
+}
+
+.step--running,
+.step--done {
+  color: var(--sumi-text);
+}
+
+.marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--sumi-correct);
+}
+
+.step--running .marker {
+  color: var(--sumi-accent-ink);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sumi-line);
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--sumi-accent-soft);
+  border-top-color: var(--sumi-accent-ink);
+  animation: spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,40 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--sumi-space-3);
+}
+
+.tile-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sumi-space-1);
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+    border-radius: var(--sumi-radius-sm);
+  }
+}
+
+.glyph {
+  font-size: var(--sumi-text-2xl);
+}
+
+.name {
+  font-size: var(--sumi-text-md);
+  font-weight: 600;
+}
+
+.meta {
+  font-size: var(--sumi-text-xs);
+  color: var(--sumi-text-2);
+}

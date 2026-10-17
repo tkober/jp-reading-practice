@@ -1,0 +1,21 @@
+<sumi-page title="Questions" width="narrow">
+  <p class="progress-label">Question {{ questionNumber() }} of {{ totalQuestions() }}</p>
+  <sumi-progress [value]="questionNumber()" [max]="totalQuestions()" ariaLabel="Question progress" />
+
+  <p class="question-text">{{ question().textEnglish }}</p>
+
+  <proto-mc-question
+    [options]="question().options"
+    [selectedId]="selectedOptionId()"
+    [correctId]="correctOptionId()"
+    (select)="select.emit($event)"
+  />
+
+  @if (answered()) {
+    <sumi-verdict [kind]="verdictKind()" [message]="'Correct answer: ' + correctOptionText()" />
+
+    <div class="actions">
+      <button type="button" sumiButton variant="primary" (click)="next.emit()">Continue</button>
+    </div>
+  }
+</sumi-page>

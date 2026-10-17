@@ -1,0 +1,101 @@
+<sumi-page title="Read">
+  @if (!hasOpenAiKey()) {
+    <sumi-banner tone="info">
+      No OpenAI key set yet.
+      <a routerLink="/settings">Add one in Settings</a>
+      to generate texts.
+    </sumi-banner>
+  }
+  @if (kanjiTrainerOnline() === false) {
+    <sumi-banner tone="notice">
+      Kanji Trainer is unreachable right now — generating still works, just on the JLPT mix below,
+      not on what you personally already know.
+    </sumi-banner>
+  }
+
+  <sumi-card>
+    <h2 sumiCardHeader>Topic</h2>
+    <proto-topic-tile-picker
+      [topics]="topics()"
+      [selectedId]="selectedTopicId()"
+      (select)="topicSelect.emit($event)"
+    />
+  </sumi-card>
+
+  <sumi-card>
+    <h2 sumiCardHeader>Length</h2>
+    <sumi-segmented-control
+      [options]="lengthOptions"
+      [value]="length()"
+      (valueChange)="lengthChange.emit($event)"
+    />
+    <p class="hint">{{ estimateText() }}</p>
+  </sumi-card>
+
+  <sumi-card>
+    <h2 sumiCardHeader>Difficulty</h2>
+    <sumi-segmented-control
+      [options]="presetOptions"
+      [value]="preset()"
+      (valueChange)="presetChange.emit($event)"
+    />
+    <p class="hint">{{ difficultySummary() }}</p>
+
+    <button type="button" class="adjust-toggle" (click)="adjustToggle.emit()">
+      <sumi-icon name="chevron-down" [class.flipped]="adjustOpen()" />
+      Adjust
+    </button>
+
+    @if (adjustOpen()) {
+      <div class="adjust">
+        <div class="field">
+          <label class="field-label" for="unknown-kanji-slider">
+            Unknown-kanji share
+            <span class="field-value">{{ unknownKanjiSharePercent() }}%</span>
+          </label>
+          <input
+            id="unknown-kanji-slider"
+            type="range"
+            sumiSlider
+            min="0"
+            max="20"
+            step="1"
+            [value]="unknownKanjiSharePercent()"
+            (input)="unknownKanjiShareChange.emit(+$any($event.target).value)"
+          />
+        </div>
+
+        <div class="field">
+          <span class="field-label">JLPT mix</span>
+          <proto-jlpt-multi-slider [shares]="jlptMix()" (sharesChange)="jlptMixChange.emit($event)" />
+        </div>
+
+        <div class="field">
+          <span class="field-label">Style</span>
+          <sumi-segmented-control
+            [options]="styleOptions"
+            [value]="style()"
+            (valueChange)="styleChange.emit($event)"
+          />
+        </div>
+
+        @if (preset() === 'stretch') {
+          <p class="hint hint--note">Stretch adapts after every session, based on how you did.</p>
+        }
+      </div>
+    }
+  </sumi-card>
+
+  <div class="actions">
+    <button
+      type="button"
+      sumiButton
+      variant="primary"
+      size="lg"
+      [disabled]="!canGenerate()"
+      (click)="onGenerate()"
+    >
+      Generate text
+    </button>
+  </div>
+</sumi-page>

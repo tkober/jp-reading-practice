@@ -1,0 +1,64 @@
+<div sumiFocusMode class="layout">
+  <!--
+    `sumi-session-bar` is built around a quiz's answered/correct/accuracy —
+    none of which this screen has. Rather than force-fit it (and its
+    hardcoded "End session" button) onto a reading session, this registers
+    its own bar in the same focus-actions slot: elapsed time, pause/resume,
+    and the furigana toggle. A candidate for its own sumi-ui issue once this
+    design is approved.
+  -->
+  <ng-template sumiShellFocusActions>
+    <div class="session-bar">
+      <span class="timer sumi-tabular" aria-label="Elapsed time">{{ elapsedLabel() }}</span>
+      <button type="button" sumiButton variant="ghost" size="sm" (click)="pauseToggle.emit()">
+        {{ paused() ? 'Resume' : 'Pause' }}
+      </button>
+      <sumi-furigana-toggle />
+      <button type="button" sumiButton variant="ghost" size="sm" (click)="chatToggle.emit()">
+        Ask about this text
+      </button>
+    </div>
+  </ng-template>
+
+  <div class="columns" [class.columns--chat-open]="chatOpen()">
+    <div class="text-column">
+      @if (paused()) {
+        <div class="paused">
+          <p>Paused</p>
+          <button type="button" sumiButton variant="primary" (click)="pauseToggle.emit()">Resume</button>
+        </div>
+      } @else {
+        <h1 class="title" lang="ja">{{ text().titleJapanese }}</h1>
+        <proto-tappable-ruby-text
+          [paragraphs]="text().paragraphs"
+          [furiganaEverywhere]="furiganaEverywhere()"
+          [selectedWordId]="selectedWordId()"
+          (wordActivate)="wordActivate.emit($event)"
+        />
+      }
+
+      <div class="done-bar">
+        <button type="button" sumiButton variant="primary" size="lg" (click)="doneReading.emit()">
+          Done reading
+        </button>
+      </div>
+    </div>
+
+    @if (chatOpen()) {
+      <proto-side-panel
+        [messages]="chatMessages()"
+        [sending]="chatSending()"
+        (close)="chatToggle.emit()"
+        (send)="chatSend.emit($event)"
+      />
+    }
+  </div>
+
+  <proto-word-popover-sheet
+    [word]="selectedWord()"
+    [anchorRect]="selectedWordAnchor()"
+    [answer]="wordAnswer()"
+    (close)="closeWord.emit()"
+    (action)="wordAction.emit($event)"
+  />
+</div>

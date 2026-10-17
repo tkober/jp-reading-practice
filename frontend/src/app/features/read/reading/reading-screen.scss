@@ -1,0 +1,76 @@
+.layout {
+  display: block;
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-3);
+  flex-wrap: wrap;
+}
+
+.timer {
+  font-size: var(--sumi-text-md);
+  font-weight: 600;
+  min-width: 3.5em;
+}
+
+.columns {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+// `proto-side-panel` is `position: fixed` on desktop (see its own scss for
+// why), so it no longer shares space with `.text-column` through flexbox —
+// this reserves its width by hand so the text never runs underneath it.
+@media (min-width: 721px) {
+  .columns--chat-open {
+    padding-right: 340px;
+  }
+}
+
+.text-column {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sumi-space-6) var(--sumi-space-4) var(--sumi-space-8);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.title {
+  font-family: var(--sumi-font-display);
+  font-size: var(--sumi-text-2xl);
+  margin: 0 0 var(--sumi-space-5) 0;
+}
+
+.paused {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sumi-space-4);
+  padding: var(--sumi-space-8) 0;
+  color: var(--sumi-text-2);
+
+  p {
+    margin: 0;
+    font-size: var(--sumi-text-lg);
+  }
+}
+
+.done-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  margin-top: var(--sumi-space-6);
+  padding: var(--sumi-space-3) 0;
+  background: linear-gradient(to top, var(--sumi-bg) 60%, transparent);
+
+  button {
+    width: 100%;
+    max-width: 320px;
+  }
+}

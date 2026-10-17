@@ -1,0 +1,73 @@
+<sumi-page [title]="pageTitle()" width="narrow">
+  <sumi-card>
+    <label class="field">
+      <span class="field-label">Name</span>
+      <input
+        type="text"
+        sumiInput
+        [value]="draft().name"
+        (input)="nameChange.emit($any($event.target).value)"
+      />
+    </label>
+
+    <label class="field">
+      <span class="field-label">Glyph</span>
+      <input
+        type="text"
+        sumiInput
+        class="glyph-input"
+        lang="ja"
+        maxlength="2"
+        [value]="draft().glyph"
+        (input)="glyphChange.emit($any($event.target).value)"
+      />
+    </label>
+
+    <div class="field">
+      <span class="field-label">Default style</span>
+      <sumi-segmented-control
+        [options]="styleOptions"
+        [value]="draft().defaultStyle"
+        (valueChange)="styleChange.emit($event)"
+      />
+    </div>
+
+    <label class="field">
+      <span class="field-label">Prompt</span>
+      <textarea
+        sumiTextarea
+        rows="5"
+        [value]="draft().prompt"
+        (input)="promptChange.emit($any($event.target).value)"
+      ></textarea>
+    </label>
+
+    @if (showRssFeeds()) {
+      <div class="field">
+        <span class="field-label">RSS feeds</span>
+        <ul class="feeds">
+          @for (feed of draft().rssFeeds; track feed; let index = $index) {
+            <li class="feed">
+              <span class="feed-url">{{ feed }}</span>
+              <button type="button" sumiButton variant="ghost" size="sm" (click)="rssFeedRemove.emit(index)">
+                Remove
+              </button>
+            </li>
+          }
+        </ul>
+        <div class="add-feed">
+          <input #newFeed type="text" sumiInput placeholder="https://www3.nhk.or.jp/rss/news/cat0.xml" />
+          <button type="button" sumiButton variant="secondary" size="sm" (click)="onAddFeed(newFeed)">
+            Add
+          </button>
+        </div>
+        <p class="hint">e.g. NHK News Web for Current events.</p>
+      </div>
+    }
+  </sumi-card>
+
+  <div class="actions">
+    <button type="button" sumiButton variant="ghost" (click)="reset.emit()">Reset</button>
+    <button type="button" sumiButton variant="primary" (click)="save.emit()">Save</button>
+  </div>
+</sumi-page>

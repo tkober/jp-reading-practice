@@ -1,0 +1,76 @@
+sumi-card {
+  display: block;
+}
+
+.hint {
+  margin: var(--sumi-space-2) 0 0 0;
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-sm);
+
+  &--note {
+    color: var(--sumi-accent-ink);
+  }
+}
+
+.adjust-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sumi-space-1);
+  margin-top: var(--sumi-space-3);
+  border: none;
+  background: none;
+  padding: var(--sumi-space-1) 0;
+  color: var(--sumi-accent-ink);
+  font-family: var(--sumi-font-ui);
+  font-size: var(--sumi-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+
+  sumi-icon {
+    transition: transform 0.15s ease-out;
+  }
+
+  sumi-icon.flipped {
+    transform: rotate(180deg);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+    border-radius: var(--sumi-radius-sm);
+  }
+}
+
+.adjust {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-4);
+  margin-top: var(--sumi-space-3);
+  padding-top: var(--sumi-space-3);
+  border-top: 1px solid var(--sumi-line);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-2);
+}
+
+.field-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--sumi-text-sm);
+  font-weight: 600;
+}
+
+.field-value {
+  font-weight: 400;
+  color: var(--sumi-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
