@@ -4,7 +4,8 @@ title: Current events
 glyph: ニュース
 default_style: formal
 sort_order: 2
-feed_urls: []
+feed_urls:
+  - https://www3.nhk.or.jp/rss/news/cat0.xml
 ---
 
 Current events, in the register of a national broadcaster's news site:

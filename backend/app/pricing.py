@@ -10,16 +10,10 @@ model, so a fallback rate is better than nothing; this app's `cost_usd` is
 nullable precisely so an unknown model can say "unknown" instead of quietly
 reporting a wrong number (see the brief for issue #8).
 
-**Where these numbers come from.** The brief for this table was to take the
-rates from jp-conversation-practice's own `pricing.py` for whichever models
-overlap, and leave every other model out rather than inventing a figure.
-As of this writing that table only prices the *realtime* models
-(`gpt-realtime*`) -- none of the curated chat models in this app's
-`model_catalog.py` slots (`gpt-4o-mini`, `gpt-4o`, `gpt-5-mini`, `gpt-5`)
-appear there. So this table starts empty: every text generated with a
-curated model reports `cost_usd: null` until real numbers are added here by
-hand, from a trusted source (OpenAI's published pricing page), the same way
-`MODEL_RATES` elsewhere in the suite is kept in sync by hand.
+**Where these numbers come from.** Standard-tier pricing from
+https://developers.openai.com/api/docs/pricing, checked 2026-10-17, in USD
+per 1M tokens. Update this table (and the date above) when OpenAI changes
+pricing -- there is nothing else keeping it in sync.
 """
 
 from __future__ import annotations
@@ -39,9 +33,15 @@ class ChatModelRates:
     output: float
 
 
-#: Deliberately empty -- see the module docstring. Add an entry here only
-#: with a number traceable to a real source; do not estimate.
-MODEL_RATES: dict[str, ChatModelRates] = {}
+#: Standard tier, https://developers.openai.com/api/docs/pricing, checked
+#: 2026-10-17. A model not listed here reports `cost_usd: null` rather than
+#: a guessed number -- add it only with a rate traceable to that page.
+MODEL_RATES: dict[str, ChatModelRates] = {
+    "gpt-4o-mini": ChatModelRates(input=0.15, cached_input=0.075, output=0.60),
+    "gpt-4o": ChatModelRates(input=2.50, cached_input=1.25, output=10.00),
+    "gpt-5-mini": ChatModelRates(input=0.25, cached_input=0.025, output=2.00),
+    "gpt-5": ChatModelRates(input=1.25, cached_input=0.125, output=10.00),
+}
 
 
 def rates_for(model: str) -> ChatModelRates | None:

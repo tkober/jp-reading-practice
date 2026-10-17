@@ -75,9 +75,9 @@ async def test_post_texts_stores_and_returns_the_text(
     assert body["targets"]["preset"] == "easy"
     assert body["attempts"] == 1
     assert body["model"] == "gpt-4o-mini"
-    # No curated chat model has a rate in pricing.py yet (see pricing.py's
-    # own docstring) -- cost is null rather than a guessed number.
-    assert body["cost_usd"] is None
+    # gpt-4o-mini has a known rate (pricing.py) -- 100 prompt + 50 completion
+    # tokens, no cached tokens: 100*0.15 + 50*0.60, per 1M.
+    assert body["cost_usd"] == pytest.approx((100 * 0.15 + 50 * 0.60) / 1_000_000)
 
     get_response = await client.get(f"/api/texts/{body['id']}")
     assert get_response.status_code == 200
