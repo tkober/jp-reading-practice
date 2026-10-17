@@ -19,7 +19,12 @@ import {
   WORD_DETAILS_PRIMARY,
 } from '../fixtures/word-lookup.fixture';
 
-export type ReadingPreviewVariant = 'default' | 'word' | 'answer' | 'chat' | 'peek' | 'paused';
+export type ReadingPreviewVariant =
+  'default' | 'word' | 'answer' | 'chat' | 'chat-focus' | 'peek' | 'paused';
+
+/** The chat focus chip's own fixture text (issue #11) -- the sentence
+ *  "Ask tutor" would carry as the next question's focus. */
+const CHAT_FOCUS_SENTENCE = '濡れても気にしないことにしました。';
 
 const DEFAULT_ACTIONS: readonly WordActionOption[] = [
   { kind: 'explain', label: 'Explain word', weight: 2 },
@@ -52,6 +57,7 @@ function findWordSpan(text: string): HTMLElement | null {
       [chatOpen]="chatOpen()"
       [chatMessages]="chatMessages()"
       [chatSending]="chatSending()"
+      [chatFocus]="chatFocus()"
       (wordActivate)="onWordActivate($event)"
       (readingPeeked)="onReadingPeeked($event)"
       (closeWord)="onCloseWord()"
@@ -59,6 +65,7 @@ function findWordSpan(text: string): HTMLElement | null {
       (pauseToggle)="paused.set(!paused())"
       (chatToggle)="chatOpen.set(!chatOpen())"
       (chatSend)="onChatSend($event)"
+      (chatFocusClear)="chatFocus.set(null)"
       (doneReading)="doneReading.set(true)"
     />
     @if (doneReading()) {
@@ -66,11 +73,14 @@ function findWordSpan(text: string): HTMLElement | null {
     }
     @if (lastPeek(); as word) {
       <p class="preview-note">
-        → readingPeeked: {{ word.text }} ({{ word.reading }}) — a weight-1 help, logged once per word
+        → readingPeeked: {{ word.text }} ({{ word.reading }}) — a weight-1 help, logged once per
+        word
       </p>
     }
   `,
-  styles: ['.preview-note { margin: var(--sumi-space-3) var(--sumi-space-4); color: var(--sumi-accent-ink); font-size: var(--sumi-text-sm); }'],
+  styles: [
+    '.preview-note { margin: var(--sumi-space-3) var(--sumi-space-4); color: var(--sumi-accent-ink); font-size: var(--sumi-text-sm); }',
+  ],
   imports: [ReadingScreen],
 })
 export class ReadingPreview {
@@ -86,14 +96,24 @@ export class ReadingPreview {
   protected readonly chatOpen = signal(false);
   protected readonly chatMessages = signal<readonly ChatMessage[]>(CHAT_MESSAGES.slice(0, 2));
   protected readonly chatSending = signal(false);
+  protected readonly chatFocus = signal<string | null>(null);
 
   protected readonly doneReading = signal(false);
 
   constructor() {
-    const variant = (inject(ActivatedRoute).snapshot.data['variant'] ?? 'default') as ReadingPreviewVariant;
+    const variant = (inject(ActivatedRoute).snapshot.data['variant'] ??
+      'default') as ReadingPreviewVariant;
     if (variant === 'chat') {
       this.chatOpen.set(true);
       this.chatMessages.set(CHAT_MESSAGES);
+    } else if (variant === 'chat-focus') {
+      // "Ask tutor" on a word, before the question is sent -- the chip
+      // above the composer, with one prior exchange still showing behind
+      // it (the focus is about the *next* question, not a reset of the
+      // conversation already in progress).
+      this.chatOpen.set(true);
+      this.chatMessages.set(CHAT_MESSAGES.slice(0, 2));
+      this.chatFocus.set(CHAT_FOCUS_SENTENCE);
     } else if (variant === 'paused') {
       this.paused.set(true);
     } else if (variant === 'word' || variant === 'answer' || variant === 'peek') {
@@ -112,7 +132,9 @@ export class ReadingPreview {
   private simulateVariant(variant: 'word' | 'answer' | 'peek'): void {
     if (variant === 'peek') {
       const span = findWordSpan('旅行');
-      span?.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse', bubbles: true }));
+      span?.dispatchEvent(
+        new PointerEvent('pointerenter', { pointerType: 'mouse', bubbles: true }),
+      );
       return;
     }
 
@@ -155,7 +177,10 @@ export class ReadingPreview {
   }
 
   protected onWordAction(kind: WordActionKind): void {
-    this.wordAnswer.set({ kind, text: `(preview placeholder ${kind} answer — real text arrives with #10+)` });
+    this.wordAnswer.set({
+      kind,
+      text: `(preview placeholder ${kind} answer — real text arrives with #10+)`,
+    });
   }
 
   protected onChatSend(message: string): void {

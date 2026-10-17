@@ -67,4 +67,10 @@ export interface WordAnswer {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
+  /** `true` for a failed question (no OpenAI key, an upstream failure --
+   *  issue #11), shown as an inline error right under it rather than a
+   *  page-level error -- `text` is the error's own sentence. The learner's
+   *  question itself is kept (the backend stores it even on failure) and
+   *  can simply be asked again, as a new question. */
+  isError?: boolean;
 }

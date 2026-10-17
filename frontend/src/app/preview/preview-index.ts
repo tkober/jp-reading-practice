@@ -35,6 +35,7 @@ const GROUPS: readonly PreviewGroup[] = [
       { path: 'reading-word', label: 'Reading — word popover/sheet' },
       { path: 'reading-answer', label: 'Reading — word answer' },
       { path: 'reading-chat', label: 'Reading — chat panel' },
+      { path: 'reading-chat-focus', label: 'Reading — chat panel, focus chip' },
       {
         path: 'reading-peek',
         label: 'Reading — reading peek',

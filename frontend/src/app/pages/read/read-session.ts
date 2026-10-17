@@ -6,10 +6,16 @@ import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiErrorState } from 'sumi-ui/layout';
 
 import { Api, ApiError } from '../../core/api';
-import type { ApiToken, SessionOutApi, SessionSummaryApi } from '../../core/api.types';
+import type {
+  ApiParagraph,
+  ApiToken,
+  SessionOutApi,
+  SessionSummaryApi,
+} from '../../core/api.types';
 import type { ComprehensionQuestion } from '../../features/read/questions/questions.types';
 import { QuestionsScreen } from '../../features/read/questions/questions-screen';
 import type {
+  ChatMessage,
   ReadingTextData,
   ReadingWord,
   WordActionKind,
@@ -22,6 +28,7 @@ import { ReadingScreen } from '../../features/read/reading/reading-screen';
 import { SummaryScreen } from '../../features/read/summary/summary-screen';
 import type { LookedUpWord } from '../../features/read/summary/summary.types';
 import { ActiveTimeTracker } from './active-time-tracker';
+import { sentenceForToken, truncateForChip } from './sentence-for-token';
 import { firstUnansweredQuestionIndex, screenForStatus } from './status-routing';
 import { mapApiParagraphsToReadingText } from './token-mapping';
 
@@ -32,17 +39,18 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart', 'wheel'] as const;
 
 /**
- * The word popover's three real action buttons (issue #10) -- labels and
- * weights exactly as the approved design/fixture (`preview/fixtures/
- * word-lookup.fixture.ts`'s `WORD_ACTIONS`) show them, minus "Ask tutor"
- * (#11 stays hidden here: a button for a chat that does not exist yet
- * would be worse than no button, same reasoning `chatEnabled` already
- * documents).
+ * The word popover's four real action buttons -- labels and weights
+ * exactly as the approved design/fixture (`preview/fixtures/
+ * word-lookup.fixture.ts`'s `WORD_ACTIONS`) show them. "Ask tutor" (issue
+ * #11) opens the chat panel with this word's sentence as its focus
+ * (`onWordAction` below) rather than calling `Api.assist()` like the other
+ * three.
  */
 const WORD_ACTIONS: readonly WordActionOption[] = [
   { kind: 'explain', label: 'Explain word', weight: 2 },
   { kind: 'translate', label: 'Translate sentence', weight: 3 },
   { kind: 'grammar', label: 'Explain grammar', weight: 3 },
+  { kind: 'tutor', label: 'Ask tutor', weight: 3 },
 ];
 
 function formatElapsed(ms: number): string {
@@ -75,6 +83,7 @@ export class ReadSessionPage {
 
   private readonly session = signal<SessionOutApi | null>(null);
   private tokensById = new Map<string, ApiToken>();
+  private paragraphs: readonly ApiParagraph[] = [];
 
   // --- reading phase ------------------------------------------------------
 
@@ -85,6 +94,16 @@ export class ReadSessionPage {
   protected readonly selectedWord = signal<WordDetails | null>(null);
   protected readonly wordAnswer = signal<WordAnswer | null>(null);
   protected readonly wordActionLoading = signal<WordActionKind | null>(null);
+
+  // --- tutor chat (issue #11) ----------------------------------------------
+
+  protected readonly chatOpen = signal(false);
+  protected readonly chatMessages = signal<readonly ChatMessage[]>([]);
+  protected readonly chatSending = signal(false);
+  /** The next question's focus, already resolved to its chip display text
+   *  -- `null` for no focus. */
+  protected readonly chatFocusLabel = signal<string | null>(null);
+  private chatFocusTokenId: string | null = null;
 
   private tracker: ActiveTimeTracker | null = null;
   private tickHandle: ReturnType<typeof setInterval> | null = null;
@@ -142,9 +161,11 @@ export class ReadSessionPage {
 
   private onSessionLoaded(session: SessionOutApi): void {
     this.session.set(session);
+    this.loadChatHistory(session.id);
 
     const screen = screenForStatus(session.status);
     if (screen === 'reading') {
+      this.paragraphs = session.text.paragraphs;
       const { paragraphs, tokensById } = mapApiParagraphsToReadingText(session.text.paragraphs);
       this.tokensById = new Map(tokensById);
       this.readingText.set({ titleJapanese: session.text.title, paragraphs });
@@ -328,14 +349,17 @@ export class ReadSessionPage {
   }
 
   /**
-   * Explain word / Translate sentence / Explain grammar (issue #10). Only
-   * ever called for one of those three -- `'tutor'` is never offered as a
-   * real action button (see `WORD_ACTIONS` above) -- but `WordActionKind`
-   * itself still carries it for the design, hence the guard rather than a
-   * narrower parameter type.
+   * Explain word / Translate sentence / Explain grammar (issue #10) call
+   * `Api.assist()` directly; "Ask tutor" (issue #11) instead opens the
+   * chat panel with this word's sentence as its focus (`openChatFocusedOn`)
+   * -- there is nothing to await here, so it returns immediately rather
+   * than falling into the shared loading/answer plumbing below.
    */
   protected onWordAction(kind: WordActionKind): void {
     if (kind === 'tutor') {
+      const tokenId = this.selectedWordId();
+      this.onCloseWord();
+      this.openChatFocusedOn(tokenId);
       return;
     }
     const session = this.session();
@@ -366,6 +390,83 @@ export class ReadSessionPage {
         }
       },
     );
+  }
+
+  // --- tutor chat (issue #11) -----------------------------------------------
+
+  private loadChatHistory(sessionId: number): void {
+    this.api.chatHistory(sessionId).then(
+      (messages) =>
+        this.chatMessages.set(
+          messages.map((message) => ({ role: message.role, text: message.content })),
+        ),
+      () => undefined, // Best-effort: an empty panel on reload is an acceptable degrade.
+    );
+  }
+
+  /** "Ask tutor" on a word: resolve its sentence from the already-loaded
+   *  paragraphs (`sentence-for-token.ts`, a client-side mirror of the
+   *  backend's own sentence splitter, used only for this chip's display
+   *  text) and open the panel with it as the next question's focus. */
+  private openChatFocusedOn(tokenId: string | null): void {
+    if (!tokenId) {
+      return;
+    }
+    const sentence = sentenceForToken(this.paragraphs, tokenId);
+    this.chatFocusTokenId = tokenId;
+    this.chatFocusLabel.set(sentence ? truncateForChip(sentence) : null);
+    this.chatOpen.set(true);
+  }
+
+  protected onChatToggle(): void {
+    this.chatOpen.update((open) => !open);
+  }
+
+  protected onChatFocusClear(): void {
+    this.chatFocusTokenId = null;
+    this.chatFocusLabel.set(null);
+  }
+
+  protected onChatSend(message: string): void {
+    const session = this.session();
+    if (!session || this.chatSending()) {
+      return;
+    }
+    // The focus belongs to this one question only -- it is consumed (and
+    // the chip cleared) the moment it is sent, whether or not the answer
+    // itself succeeds (brief: "The next question carries that focus;
+    // afterwards the chip clears").
+    const focusTokenId = this.chatFocusTokenId;
+    this.chatFocusTokenId = null;
+    this.chatFocusLabel.set(null);
+
+    this.chatMessages.update((messages) => [...messages, { role: 'user', text: message }]);
+    this.chatSending.set(true);
+
+    this.api
+      .sendChat(session.id, { content: message, focus_token_id: focusTokenId ?? undefined })
+      .then(
+        (result) => {
+          this.chatSending.set(false);
+          this.chatMessages.update((messages) => [
+            ...messages,
+            { role: 'assistant', text: result.assistant_message.content },
+          ]);
+        },
+        (error: unknown) => {
+          this.chatSending.set(false);
+          // Same convention as the word popover's own assist errors (issue
+          // #10): `ApiError`'s message already reads like a sentence, shown
+          // inline rather than as a page-level error. The question itself
+          // stays in the thread (the backend kept it) -- asking again is
+          // simply a new question.
+          const text = error instanceof ApiError ? error.message : 'This could not be answered.';
+          this.chatMessages.update((messages) => [
+            ...messages,
+            { role: 'assistant', text, isError: true },
+          ]);
+        },
+      );
   }
 
   protected onDoneReading(): void {
