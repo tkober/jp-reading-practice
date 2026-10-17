@@ -1,6 +1,27 @@
-<sumi-page title="Stats">
-  <sumi-empty-state title="No reading stats yet" companion="fukurou">
-    Your reading speed, help usage and reading level will show up here once you have completed a few
-    texts.
-  </sumi-empty-state>
-</sumi-page>
+@if (failed()) {
+  <sumi-page title="Stats">
+    <sumi-error-state title="Can't reach the server" companion="fukurou" pattern="none">
+      Your stats are safe either way.
+      <button sumiErrorAction type="button" sumiButton variant="secondary" (click)="reload()">
+        Try again
+      </button>
+    </sumi-error-state>
+  </sumi-page>
+} @else if (loading()) {
+  <sumi-page title="Stats">
+    <p>Loading…</p>
+  </sumi-page>
+} @else if (loadError(); as error) {
+  <sumi-page title="Stats">
+    <sumi-banner tone="error">{{ error }}</sumi-banner>
+  </sumi-page>
+} @else {
+  <app-stats-screen
+    [summary]="summary()"
+    [speedSeries]="speedSeries()"
+    [helpsSeries]="helpsSeries()"
+    [speedByStyle]="speedByStyle()"
+    [speedByTopic]="speedByTopic()"
+    [problemWords]="problemWords()"
+  />
+}

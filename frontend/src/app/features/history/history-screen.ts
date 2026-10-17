@@ -1,19 +1,28 @@
 import { Component, computed, input, output } from '@angular/core';
 import { SumiDataTable, type SumiTableColumn, type SumiTableRow } from 'sumi-ui/charts';
+import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiEmptyState, SumiPage } from 'sumi-ui/layout';
 import type { HistorySession } from './history.types';
+
+/** Shown in the speed/helps/score cells of a session still `reading`/
+ *  `questions` -- its numbers are not final yet (see `HistorySession.
+ *  finished`). */
+const IN_PROGRESS = 'In progress';
 
 @Component({
   selector: 'app-history-screen',
   templateUrl: './history-screen.html',
   styleUrl: './history-screen.scss',
-  imports: [SumiPage, SumiEmptyState, SumiDataTable],
+  imports: [SumiPage, SumiEmptyState, SumiDataTable, SumiButtonDirective],
   host: { class: 'app-history-screen' },
 })
 export class HistoryScreen {
   readonly sessions = input<readonly HistorySession[]>([]);
 
   readonly openSession = output<string>();
+  /** "Export JSON" (issue #12) -- the page fetches `GET /api/export` and
+   *  triggers the download; this screen only reports the click. */
+  readonly exportRequested = output<void>();
 
   protected readonly columns: readonly SumiTableColumn[] = [
     { key: 'date', label: 'Date' },
@@ -34,9 +43,9 @@ export class HistoryScreen {
       title: session.titleJapanese,
       topic: session.topicName,
       length: session.length,
-      speed: session.speedCharsPerMinute,
-      helps: session.helpsPerHundred,
-      score: `${session.scoreCorrect}/${session.scoreTotal}`,
+      speed: session.finished ? session.speedCharsPerMinute : IN_PROGRESS,
+      helps: session.finished ? session.helpsPerHundred : IN_PROGRESS,
+      score: session.finished ? `${session.scoreCorrect}/${session.scoreTotal}` : IN_PROGRESS,
     })),
   );
 

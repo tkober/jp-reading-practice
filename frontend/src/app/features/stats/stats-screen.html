@@ -9,7 +9,11 @@
       />
       <sumi-stat-tile [value]="s.helpsPerHundred" label="helps / 100 words" />
       <sumi-stat-tile [value]="s.comprehensionPercent + '%'" label="comprehension" />
-      <sumi-stat-tile [value]="s.readingLevel" label="reading level" [hint]="s.readingLevelDetail" />
+      <sumi-stat-tile
+        [value]="s.readingLevel"
+        label="reading level"
+        [hint]="s.readingLevelDetail"
+      />
     </sumi-stat-grid>
 
     <section class="chart-section">
@@ -35,6 +39,11 @@
     <section class="chart-section">
       <h2>Speed by style</h2>
       <sumi-bar-chart ariaLabel="Reading speed by style" [bars]="speedByStyle()" [table]="true" />
+    </section>
+
+    <section class="chart-section">
+      <h2>Speed by topic</h2>
+      <sumi-bar-chart ariaLabel="Reading speed by topic" [bars]="speedByTopic()" [table]="true" />
     </section>
 
     @if (problemWords().length > 0) {
