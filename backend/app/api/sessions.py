@@ -22,11 +22,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import dictionary
 from .. import kanji_trainer as kt
-from ..db import GeneratedText, HelpEvent, ReadingSession, get_session
+from ..assist import generate_help_answer
+from ..db import GeneratedText, HelpAnswer, HelpEvent, ReadingSession, get_session
+from ..generation import GenerationError
+from ..help_prompts import (
+    build_explain_grammar_instructions,
+    build_explain_word_instructions,
+    build_translate_sentence_instructions,
+)
 from ..helps import WEIGHTS
 from ..models import (
     AnswerRequest,
     AnswerResult,
+    AssistRequest,
+    AssistResult,
     FinishReadingRequest,
     HelpRequest,
     HelpResult,
@@ -41,7 +50,9 @@ from ..models import (
     SessionTimeRequest,
     WordLookupOut,
 )
+from ..pricing import cost_usd
 from ..runtime_config import load_runtime_config
+from ..sentences import Sentence, find_sentence
 from .texts import _text_out
 
 router = APIRouter()
@@ -178,24 +189,30 @@ async def _log_help(
     *,
     kind: str,
     token_id: str,
+    target: str,
     lemma: str,
     surface: str,
+    cost_usd: float | None = None,
 ) -> HelpResult:
-    """Insert one help event, deduped by `(session_id, kind, lemma)` -- a
-    repeat is a no-op (`counted=False`), never an error."""
+    """Insert one help event, deduped by `(session_id, kind, target)` -- a
+    repeat is a no-op (`counted=False`), never an error. `target` is the
+    lemma for a word-kind help, the sentence key for a sentence-kind one
+    (see `db.HelpEvent`'s docstring and `sentences.py`)."""
     weight = WEIGHTS[kind]
     stmt = (
         postgresql_insert(HelpEvent)
         .values(
             session_id=session_row.id,
             kind=kind,
+            target=target,
             token_id=token_id,
             lemma=lemma,
             surface=surface,
             weight=weight,
             at_ms=session_row.active_ms,
+            cost_usd=cost_usd,
         )
-        .on_conflict_do_nothing(index_elements=["session_id", "kind", "lemma"])
+        .on_conflict_do_nothing(index_elements=["session_id", "kind", "target"])
     )
     result = await session.execute(stmt)
     await session.commit()
@@ -217,6 +234,7 @@ async def log_help(
         row,
         kind=payload.kind,
         token_id=payload.token_id,
+        target=token["lemma"],
         lemma=token["lemma"],
         surface=token["surface"],
     )
@@ -261,6 +279,7 @@ async def log_lookup(
         row,
         kind="word_lookup",
         token_id=payload.token_id,
+        target=token["lemma"],
         lemma=token["lemma"],
         surface=token["surface"],
     )
@@ -276,6 +295,131 @@ async def log_lookup(
         jlpt=token["jlpt"],
         meanings=list(entry.glosses[:3]) if entry else [],
         known_status=known_status,
+    )
+
+
+# --- LLM helps: explain / translate / grammar (issue #10) -------------------
+
+
+def _sentence_for_token(text_row: GeneratedText, token: dict) -> Sentence:
+    """The sentence containing `token`, via `sentences.py` -- `token["id"]`'s
+    own `"<paragraph>-<token>"` shape (`analysis.py`) names the paragraph to
+    split without scanning every one of them."""
+    paragraph_index = int(token["id"].split("-", 1)[0])
+    paragraph_tokens = text_row.analysis["paragraphs"][paragraph_index]["tokens"]
+    pairs = [(t["id"], t["surface"]) for t in paragraph_tokens]
+    sentence = find_sentence(paragraph_index, pairs, token["id"])
+    assert sentence is not None  # every token belongs to some sentence
+    return sentence
+
+
+@router.post("/{session_id}/assist", response_model=AssistResult)
+async def assist(
+    session_id: int, payload: AssistRequest, session: AsyncSession = Depends(get_session)
+) -> AssistResult:
+    """Explain word / Translate sentence / Explain grammar. `explain` acts
+    on the tapped word itself (422 on a particle); `translate`/`grammar`
+    act on the sentence containing it (`_sentence_for_token`).
+
+    Cached by `(text_id, kind, target)` in `help_answers`: a cache hit never
+    calls OpenAI, and the help event logged for it (see `_log_help`) costs
+    this session `0.0` either way -- only an answer this session's own
+    request actually generates carries the real cost (`HelpEvent.cost_usd`'s
+    docstring).
+    """
+    row = await _get_session_or_404(session, session_id)
+    _require_status(row, "reading")
+    text_row = await _get_text_or_404(session, row.text_id)
+    token = _find_token(text_row, payload.token_id)
+    if token is None:
+        raise HTTPException(status_code=404, detail="Unknown token.")
+
+    if payload.kind == "explain" and not token["is_word"]:
+        raise HTTPException(
+            status_code=422,
+            detail="This token is a grammar particle, it cannot be explained as a word.",
+        )
+
+    sentence = _sentence_for_token(text_row, token)
+    target = token["lemma"] if payload.kind == "explain" else sentence.key
+
+    cached_row = await session.scalar(
+        select(HelpAnswer).where(
+            HelpAnswer.text_id == text_row.id,
+            HelpAnswer.kind == payload.kind,
+            HelpAnswer.target == target,
+        )
+    )
+
+    if cached_row is not None:
+        help_result = await _log_help(
+            session,
+            row,
+            kind=payload.kind,
+            token_id=payload.token_id,
+            target=target,
+            lemma=token["lemma"],
+            surface=token["surface"],
+            cost_usd=0.0,
+        )
+        return AssistResult(
+            kind=payload.kind,
+            answer=cached_row.answer,
+            cached=True,
+            counted=help_result.counted,
+            weight=help_result.weight,
+        )
+
+    config = await load_runtime_config(session)
+    if payload.kind == "explain":
+        prompt = build_explain_word_instructions(
+            text=text_row.body, surface=token["surface"], sentence=sentence.text
+        )
+    elif payload.kind == "translate":
+        prompt = build_translate_sentence_instructions(text=text_row.body, sentence=sentence.text)
+    else:
+        prompt = build_explain_grammar_instructions(text=text_row.body, sentence=sentence.text)
+
+    try:
+        answer, usage = await generate_help_answer(config=config, prompt=prompt)
+    except GenerationError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    answer_cost = cost_usd(config.help_model, [usage])
+
+    insert_stmt = (
+        postgresql_insert(HelpAnswer)
+        .values(
+            text_id=text_row.id,
+            kind=payload.kind,
+            target=target,
+            answer=answer,
+            model=config.help_model,
+            usage=usage.as_dict(),
+            cost_usd=answer_cost,
+        )
+        .on_conflict_do_nothing(index_elements=["text_id", "kind", "target"])
+    )
+    await session.execute(insert_stmt)
+    await session.commit()
+
+    help_result = await _log_help(
+        session,
+        row,
+        kind=payload.kind,
+        token_id=payload.token_id,
+        target=target,
+        lemma=token["lemma"],
+        surface=token["surface"],
+        cost_usd=answer_cost,
+    )
+
+    return AssistResult(
+        kind=payload.kind,
+        answer=answer,
+        cached=False,
+        counted=help_result.counted,
+        weight=help_result.weight,
     )
 
 
@@ -348,6 +492,10 @@ async def get_summary(
     helps_per_100_words = (
         round(weight_sum / metrics["words"] * 100, 1) if metrics["words"] else 0.0
     )
+    # 0.0 for reading_peek/word_lookup (cost_usd is NULL) and for a cached
+    # assist answer (cost_usd is 0.0) alike -- only an assist this session's
+    # own request actually generated adds anything (see `HelpEvent.cost_usd`).
+    assists_cost_usd = sum(h.cost_usd or 0.0 for h in help_rows)
 
     questions = text_row.questions
     answers = row.answers
@@ -375,6 +523,7 @@ async def get_summary(
         questions_total=len(questions),
         active_ms=row.active_ms,
         looked_up_words=looked_up_words,
+        assists_cost_usd=assists_cost_usd,
     )
 
 

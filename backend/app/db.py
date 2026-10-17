@@ -259,24 +259,42 @@ class ReadingSession(Base):
 
 
 class HelpEvent(Base):
-    """One costed help, logged once per word/session (issue #9).
+    """One costed help, logged once per target/session (issue #9, extended
+    by #10).
 
-    `kind` is a plain string column, not a DB enum, so issue #10 can add
-    `explain`/`translate`/`grammar`/`tutor` without a schema change -- see
-    `helps.py` for every weight, defined now even though only
-    `reading_peek`/`word_lookup` are wired up yet. The unique constraint on
-    `(session_id, kind, lemma)` is the dedupe itself: a repeat insert is a
+    `kind` is a plain string column, not a DB enum, so #10 can add
+    `explain`/`translate`/`grammar` (and a later `tutor`) without a schema
+    change -- see `helps.py` for every weight. The unique constraint on
+    `(session_id, kind, target)` is the dedupe itself: a repeat insert is a
     no-op (`ON CONFLICT DO NOTHING`, see `api/sessions.py`), and its weight
-    is the "counted once per word per session" rule from the concept, not a
-    second thing the code has to decide. `token_id` is kept alongside
-    `lemma`/`surface` so the summary can join back to the exact occurrence
-    that was first looked up (e.g. for the reading shown on the summary's
-    looked-up-words list), even though the dedupe key is the lemma.
+    is the "counted once per target per session" rule from the concept, not
+    a second thing the code has to decide.
+
+    `target` is what is actually deduped on: the lemma for a word-kind help
+    (`reading_peek`, `word_lookup`, `explain`), the sentence key
+    (`sentences.Sentence.key`, `"<paragraph>-<sentence>"`) for a sentence-kind
+    help (`translate`, `grammar`) -- see `sentences.py` and the assist
+    endpoint. `lemma`/`surface`/`token_id` still ride along unconditionally
+    (not just for word kinds) so the summary can always join back to the
+    exact occurrence that triggered the help, even one whose dedupe target is
+    a sentence key rather than `lemma` itself.
+
+    `cost_usd` is `NULL` for `reading_peek`/`word_lookup` (not an LLM call at
+    all) and for an assist answer served from `help_answers`' cache (a cache
+    hit costs this *session* nothing, even though the answer itself has a
+    cost recorded against whichever session first generated it) -- `0.0`
+    specifically marks "costed, but free this time" so summing cache hits
+    with `NULL` reading-peeks the same way (both as 0) is correct. Only an
+    assist that this session's own request actually generated carries the
+    real amount. `api/sessions.py`'s summary's `assists_cost_usd` is the sum
+    of this column over one session.
     """
 
     __tablename__ = "help_events"
     __table_args__ = (
-        UniqueConstraint("session_id", "kind", "lemma", name="uq_help_events_session_kind_lemma"),
+        UniqueConstraint(
+            "session_id", "kind", "target", name="uq_help_events_session_kind_target"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -284,12 +302,55 @@ class HelpEvent(Base):
         ForeignKey("reading_sessions.id", ondelete="CASCADE"), nullable=False
     )
     kind: Mapped[str] = mapped_column(String, nullable=False)
+    target: Mapped[str] = mapped_column(String, nullable=False)
     token_id: Mapped[str] = mapped_column(String, nullable=False)
     lemma: Mapped[str] = mapped_column(String, nullable=False)
     surface: Mapped[str] = mapped_column(String, nullable=False)
     weight: Mapped[int] = mapped_column(Integer, nullable=False)
     #: `ReadingSession.active_ms` at the moment this help was logged.
     at_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: See the class docstring -- `NULL` for a non-LLM help, `0.0` for an
+    #: assist answer served from cache, the real cost for one this session
+    #: generated itself.
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class HelpAnswer(Base):
+    """One cached LLM answer for one target in one text (issue #10).
+
+    The cache itself: the unique constraint on `(text_id, kind, target)`
+    means the same question about the same text is answered once ever,
+    reused by *any* later session that asks it again -- unlike `HelpEvent`,
+    which is scoped to one session's own dedupe/weight bookkeeping, this
+    table does not know or care which session asked. `target` is the same
+    lemma/sentence-key `HelpEvent.target` uses for the matching kind (see its
+    docstring and `sentences.py`).
+
+    `model`/`usage`/`cost_usd` describe the one generation call that produced
+    `answer` -- `cost_usd` is `NULL` exactly when `pricing.rates_for()` does
+    not know `model`, same convention as `GeneratedText.cost_usd`.
+    """
+
+    __tablename__ = "help_answers"
+    __table_args__ = (
+        UniqueConstraint(
+            "text_id", "kind", "target", name="uq_help_answers_text_kind_target"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text_id: Mapped[int] = mapped_column(
+        ForeignKey("texts.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    target: Mapped[str] = mapped_column(String, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    usage: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
