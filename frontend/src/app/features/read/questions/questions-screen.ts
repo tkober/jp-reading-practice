@@ -1,8 +1,7 @@
 import { Component, computed, input, output } from '@angular/core';
 import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiPage, SumiProgress } from 'sumi-ui/layout';
-import { SumiVerdictCard } from 'sumi-ui/practice';
-import { McQuestion } from '../../../proto/mc-question/mc-question';
+import { SumiChoiceQuestion, SumiVerdictCard } from 'sumi-ui/practice';
 import type { ComprehensionQuestion } from './questions.types';
 
 /**
@@ -14,7 +13,7 @@ import type { ComprehensionQuestion } from './questions.types';
   selector: 'app-questions-screen',
   templateUrl: './questions-screen.html',
   styleUrl: './questions-screen.scss',
-  imports: [SumiPage, SumiProgress, SumiVerdictCard, McQuestion, SumiButtonDirective],
+  imports: [SumiPage, SumiProgress, SumiVerdictCard, SumiChoiceQuestion, SumiButtonDirective],
   host: { class: 'app-questions-screen' },
 })
 export class QuestionsScreen {

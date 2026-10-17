@@ -1,8 +1,8 @@
-import type { McOption } from '../../../proto/mc-question/mc-question';
+import type { SumiChoiceOption } from 'sumi-ui/practice';
 
 export interface ComprehensionQuestion {
   id: string;
   textEnglish: string;
-  options: readonly McOption[];
+  options: readonly SumiChoiceOption[];
   correctOptionId: string;
 }

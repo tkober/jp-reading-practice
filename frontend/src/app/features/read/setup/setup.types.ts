@@ -1,4 +1,19 @@
-import type { JlptShares } from '../../../proto/jlpt-multi-slider/jlpt-multi-slider';
+// `sumi-share-slider` (sumi-ui#99, `sumi-ui/forms`) replaced
+// `proto/jlpt-multi-slider`; it works with a plain labelled array
+// (`SumiShareSegment[]`), not this app's own keyed `JlptShares`, so
+// `jlptSharesToSegments`/`segmentsToJlptShares` below bridge the two at
+// the one place that binds to it (`SetupScreen`) — every other consumer
+// (`DIFFICULTY_PRESETS`, `GateScreen`, the preview fixtures) keeps using
+// the keyed shape, which is far more convenient to read/construct by level.
+import type { SumiShareSegment } from 'sumi-ui/forms';
+
+export interface JlptShares {
+  n5: number;
+  n4: number;
+  n3: number;
+  n2: number;
+  n1: number;
+}
 
 export type ReadingLength = 'short' | 'medium' | 'long';
 export type DifficultyPreset = 'easy' | 'stretch' | 'challenge';
@@ -69,4 +84,17 @@ export function summarizeDifficulty(settings: DifficultySettings): string {
       : `Mostly ${JLPT_LABELS[inLevelOrder[0] ?? 'n5']}`;
   const styleLabel = settings.style.toLowerCase();
   return `${mix} · up to ${settings.unknownKanjiSharePercent}% unknown kanji · ${styleLabel}`;
+}
+
+export function jlptSharesToSegments(shares: JlptShares): SumiShareSegment[] {
+  return JLPT_ORDER.map((level) => ({ label: JLPT_LABELS[level], value: shares[level] }));
+}
+
+export function segmentsToJlptShares(segments: readonly SumiShareSegment[]): JlptShares {
+  const byLabel = new Map(segments.map((segment) => [segment.label, segment.value]));
+  const next: JlptShares = { n5: 0, n4: 0, n3: 0, n2: 0, n1: 0 };
+  for (const level of JLPT_ORDER) {
+    next[level] = byLabel.get(JLPT_LABELS[level]) ?? 0;
+  }
+  return next;
 }

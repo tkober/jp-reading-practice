@@ -8,7 +8,7 @@ import {
   type TextStyle,
 } from '../../features/read/setup/setup.types';
 import { DEFAULT_JLPT_MIX, TOPIC_TILES } from '../fixtures/topics.fixture';
-import type { JlptShares } from '../../proto/jlpt-multi-slider/jlpt-multi-slider';
+import type { JlptShares } from '../../features/read/setup/setup.types';
 
 /** One component behind four routes (`setup`, `setup-adjust`,
  *  `setup-no-key`, `setup-kt-offline`) — the only difference between them

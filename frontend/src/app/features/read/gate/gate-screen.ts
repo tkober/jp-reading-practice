@@ -1,7 +1,7 @@
 import { Component, computed, input, output } from '@angular/core';
 import { SumiSegmentedBar, type SumiSegment } from 'sumi-ui/charts';
 import { SumiSessionGate } from 'sumi-ui/practice';
-import type { JlptShares } from '../../../proto/jlpt-multi-slider/jlpt-multi-slider';
+import type { JlptShares } from '../setup/setup.types';
 
 const JLPT_COLORS: Record<keyof JlptShares, string> = {
   n5: 'var(--sumi-seq-1)',

@@ -1,16 +1,20 @@
 // Preview-only fixture data — not the learner's own data.
-import type { TopicTileOption } from '../../proto/topic-tile-picker/topic-tile-picker';
+import type { SumiTileOption } from 'sumi-ui/forms';
 import type { TopicDraft, TopicSummary } from '../../features/topics/topics.types';
-import type { JlptShares } from '../../proto/jlpt-multi-slider/jlpt-multi-slider';
+import type { JlptShares } from '../../features/read/setup/setup.types';
 
-export const TOPIC_TILES: readonly TopicTileOption[] = [
-  { id: 'daily-life', glyph: '日常', name: 'Daily life' },
-  { id: 'history', glyph: '歴史', name: 'History' },
-  { id: 'current-events', glyph: 'ニュース', name: 'Current events' },
-  { id: 'culture', glyph: '文化', name: 'Culture' },
-  { id: 'travel', glyph: '旅行', name: 'Travel' },
-  { id: 'science', glyph: '科学', name: 'Science' },
-  { id: 'short-story', glyph: '物語', name: 'Short story' },
+// Includes the "Surprise me" tile (`special: true`) as a normal option —
+// `sumi-tile-picker` (sumi-ui#98) has no dedicated slot for it, see
+// `SetupScreen.topics`'s doc comment.
+export const TOPIC_TILES: readonly SumiTileOption<string>[] = [
+  { value: 'daily-life', glyph: '日常', label: 'Daily life', lang: 'ja' },
+  { value: 'history', glyph: '歴史', label: 'History', lang: 'ja' },
+  { value: 'current-events', glyph: 'ニュース', label: 'Current events', lang: 'ja' },
+  { value: 'culture', glyph: '文化', label: 'Culture', lang: 'ja' },
+  { value: 'travel', glyph: '旅行', label: 'Travel', lang: 'ja' },
+  { value: 'science', glyph: '科学', label: 'Science', lang: 'ja' },
+  { value: 'short-story', glyph: '物語', label: 'Short story', lang: 'ja' },
+  { value: 'surprise', glyph: '✨', label: 'Surprise me', special: true },
 ];
 
 export const TOPIC_SUMMARIES: readonly TopicSummary[] = [

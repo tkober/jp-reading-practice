@@ -2,40 +2,19 @@
   display: block;
 }
 
-.session-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--sumi-space-2);
-  // Never wraps: below 720px the icon-only row keeps this to a handful of
-  // small, fixed-size buttons that always fit next to the timer and brand.
-  flex-wrap: nowrap;
-}
-
-.timer {
-  font-size: var(--sumi-text-md);
-  font-weight: 600;
-  min-width: 3em;
-  flex-shrink: 0;
-}
-
-.compact-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sumi-space-1);
-}
-
-.icon-btn {
+// The one action this screen projects into `sumi-session-bar`; styled like
+// the bar's own built-in pause button next to it.
+.chat-action {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
+  gap: var(--sumi-space-2);
   border: none;
   border-radius: var(--sumi-radius-sm);
   background: transparent;
   color: var(--sumi-text-2);
-  font-size: var(--sumi-text-md);
-  line-height: 1;
+  font: inherit;
+  font-size: var(--sumi-text-sm);
+  padding: var(--sumi-space-1) var(--sumi-space-2);
   cursor: pointer;
 
   sumi-icon {
@@ -58,37 +37,16 @@
   }
 }
 
-.full-actions {
-  display: none;
-  align-items: center;
-  gap: var(--sumi-space-3);
-}
-
-@media (min-width: 720px) {
-  .compact-actions {
-    display: none;
-  }
-
-  .full-actions {
-    display: flex;
-  }
-}
-
+// Full width, no centering of its own: `sumi-side-panel` is a real flex
+// item now (not the old prototype's `position: fixed` overlay), so it
+// must dock at the *viewport's* right edge the way it did before, not at
+// the edge of some narrower centred row — `.text-column` already centres
+// itself (`max-width: 720px; margin: 0 auto` below) within whatever
+// width `.columns` leaves it once the panel's own 340px comes out.
 .columns {
   display: flex;
   align-items: stretch;
   gap: 0;
-  max-width: 1100px;
-  margin: 0 auto;
-}
-
-// `proto-side-panel` is `position: fixed` on desktop (see its own scss for
-// why), so it no longer shares space with `.text-column` through flexbox —
-// this reserves its width by hand so the text never runs underneath it.
-@media (min-width: 721px) {
-  .columns--chat-open {
-    padding-right: 340px;
-  }
 }
 
 .text-column {
@@ -111,14 +69,17 @@
 
 // Blurred, not removed — strongly enough that the text genuinely cannot
 // be read at either font size (22px desktop / 19px phone, see
-// `tappable-ruby-text.scss`), with contrast and opacity pulled down too
+// `sumi-ui/practice/reading-text/reading-text.scss`), with contrast and
+// opacity pulled down too
 // so a sharp letterform never "pokes through" the blur at the edges of a
 // stroke. `inert` (template) on top takes it out of the tab order and
 // disables pointer events natively, so `pointer-events: none` here is
 // only a visual-safety fallback for browsers that honour one without the
 // other.
 .text-blurrable {
-  transition: filter 0.2s ease, opacity 0.2s ease;
+  transition:
+    filter 0.2s ease,
+    opacity 0.2s ease;
 
   &--paused {
     filter: blur(8px) contrast(0.6);
@@ -173,4 +134,117 @@
     width: 100%;
     max-width: 320px;
   }
+}
+
+// --- word lookup popover content -----------------------------------------
+// Projected into `sumi-popover`'s header/body/`[sumiPopoverActions]` slots
+// (see reading-screen.html) — the overlay shell (placement, shadow, close
+// button, phone bottom-sheet) is the library's; only this content is ours,
+// same split `sumi-dialog` usages elsewhere in the suite already follow.
+
+.word-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sumi-space-2);
+  flex-wrap: wrap;
+}
+
+.word-header__word {
+  font-size: var(--sumi-text-xl);
+  font-weight: 600;
+}
+
+.word-header__reading {
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-sm);
+}
+
+.word-known-status {
+  margin: 0 0 var(--sumi-space-3) 0;
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-sm);
+}
+
+.word-meanings {
+  margin: 0 0 var(--sumi-space-3) 0;
+  padding-left: var(--sumi-space-5);
+  font-size: var(--sumi-text-sm);
+
+  li + li {
+    margin-top: var(--sumi-space-1);
+  }
+}
+
+.word-answer {
+  border-top: 1px solid var(--sumi-line);
+  padding-top: var(--sumi-space-3);
+  margin-bottom: var(--sumi-space-3);
+}
+
+.word-answer__kind {
+  margin: 0 0 var(--sumi-space-1) 0;
+  font-size: var(--sumi-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sumi-accent-ink);
+}
+
+.word-answer__text {
+  margin: 0;
+  font-size: var(--sumi-text-sm);
+  line-height: 1.5;
+}
+
+.word-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sumi-space-2);
+}
+
+.word-actions__weight {
+  margin-left: var(--sumi-space-1);
+  color: var(--sumi-muted);
+  font-size: var(--sumi-text-xs);
+}
+
+// --- chat panel content ---------------------------------------------------
+// Projected into `sumi-side-panel`'s body/`[sumiSidePanelFooter]` slots.
+
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-2);
+}
+
+.chat-message {
+  margin: 0;
+  max-width: 85%;
+  padding: var(--sumi-space-2) var(--sumi-space-3);
+  border-radius: var(--sumi-radius);
+  background: var(--sumi-sunken);
+  font-size: var(--sumi-text-sm);
+  line-height: 1.5;
+  align-self: flex-start;
+
+  &--user {
+    align-self: flex-end;
+    background: var(--sumi-accent-soft);
+  }
+
+  &--pending {
+    color: var(--sumi-muted);
+  }
+}
+
+[sumiSidePanelFooter] textarea {
+  width: 100%;
+  resize: none;
+}
+
+// The footer's own `display: flex; flex-direction: column` (library CSS)
+// stretches children to its full width by default -- without this the
+// Send button would stretch full-width along with the textarea above it.
+.chat-send-row {
+  display: flex;
+  justify-content: flex-end;
 }

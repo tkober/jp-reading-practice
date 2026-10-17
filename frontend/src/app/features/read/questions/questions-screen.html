@@ -4,11 +4,11 @@
 
   <p class="question-text">{{ question().textEnglish }}</p>
 
-  <proto-mc-question
+  <sumi-choice-question
     [options]="question().options"
     [selectedId]="selectedOptionId()"
     [correctId]="correctOptionId()"
-    (select)="select.emit($event)"
+    (optionSelected)="select.emit($event)"
   />
 
   @if (answered()) {

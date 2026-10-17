@@ -295,6 +295,26 @@ copies (`core/api.ts`'s `rethrow()`, `core/unreachable.ts`'s
 `pages/settings` is the one real screen so far, built against the backend's
 existing `GET/PUT /api/settings` and `GET /api/settings/models`.
 
+`frontend/src/app/features/read/{gate,setup,reading,questions}` are the
+approved design's screens (issue #6), built against `frontend/src/app/
+preview/` fixtures until #9+ wire them to real data -- `ng serve` and open
+`/preview` (dev mode only, see `preview.routes.ts`'s doc comment) to click
+through every state. #21 moved every screen off its own app-local
+prototype (`proto/`, now deleted) onto the matching Sumi UI component:
+`sumi-reading-text` for the running text and its per-word reading peeks,
+`sumi-popover` for the word lookup (anchored on desktop, a bottom sheet on
+phone -- `ReadingScreen` projects the word/meanings/actions content into
+it, the overlay shell itself is the library's), `sumi-side-panel` for the
+"ask about this text" chat, the extended `sumi-session-bar` for the
+reading header (elapsed/pause/chat, no "End session"), `sumi-choice-
+question` for the comprehension questions, `sumi-tile-picker` for the
+topic grid and `sumi-share-slider` for the JLPT mix. One library gap found
+along the way: `sumi-reading-text`'s `wordActivated` event carries only
+the activated word's `DOMRect`, not the element itself, which `sumi-
+popover`'s `[anchor]` input wants live (so it can re-measure on resize/
+scroll) -- `ReadingScreen.resolveAnchorElement` bridges the two via
+`document.elementFromPoint`, see its own doc comment.
+
 `core/api.ts`'s `kanjiTrainerStatus()` calls `GET /api/kanji-trainer/status`
 (see "Kanji Trainer (MCP)" above) for the Settings screen's "Test
 connection" button. A 404 there is not "the backend is unreachable" (see

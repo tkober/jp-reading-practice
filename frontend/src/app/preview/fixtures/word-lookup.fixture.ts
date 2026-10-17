@@ -1,9 +1,5 @@
 // Preview-only fixture data — not the learner's own data.
-import type {
-  WordAnswer,
-  WordDetails,
-} from '../../proto/word-popover-sheet/word-popover-sheet';
-import type { ChatMessage } from '../../proto/side-panel/side-panel';
+import type { ChatMessage, WordAnswer, WordDetails } from '../../features/read/reading/reading.types';
 import { findWordByText } from './reading-text.fixture';
 
 const WORD_ACTIONS = [
