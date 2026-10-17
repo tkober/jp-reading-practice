@@ -30,6 +30,7 @@ from ..help_prompts import (
     build_explain_word_instructions,
     build_translate_sentence_instructions,
     build_tutor_messages,
+    focus_question,
 )
 from ..helps import WEIGHTS
 from ..models import (
@@ -56,7 +57,7 @@ from ..models import (
 )
 from ..pricing import cost_usd
 from ..runtime_config import load_runtime_config
-from ..sentences import Sentence, find_sentence
+from ..sentences import Sentence, find_sentence, split_sentences
 from .texts import _text_out
 
 router = APIRouter()
@@ -317,6 +318,44 @@ def _sentence_for_token(text_row: GeneratedText, token: dict) -> Sentence:
     return sentence
 
 
+def _sentence_texts(text_row: GeneratedText) -> dict[str, str]:
+    """Every sentence of the text by key, for re-adding a past question's
+    focus to the chat history."""
+    texts: dict[str, str] = {}
+    for paragraph_index, paragraph in enumerate(text_row.analysis["paragraphs"]):
+        pairs = [(t["id"], t["surface"]) for t in paragraph["tokens"]]
+        for sentence in split_sentences(paragraph_index, pairs):
+            texts[sentence.key] = sentence.text
+    return texts
+
+
+def _answered_history(
+    text_row: GeneratedText, rows: list[ChatMessage]
+) -> list[tuple[str, str]]:
+    """The conversation as the model should see it: only questions that got
+    an answer (a failed one is kept for the learner, but resending it must
+    not reach the model twice, or as two user turns in a row), each with
+    its focus sentence prefixed again exactly as it was when asked."""
+    sentence_texts: dict[str, str] | None = None
+    pairs: list[tuple[str, str]] = []
+    for index, message in enumerate(rows):
+        if message.role != "user":
+            continue
+        reply = rows[index + 1] if index + 1 < len(rows) else None
+        if reply is None or reply.role != "assistant":
+            continue
+        question = message.content
+        if message.focus_sentence_key:
+            if sentence_texts is None:
+                sentence_texts = _sentence_texts(text_row)
+            focus = sentence_texts.get(message.focus_sentence_key)
+            if focus:
+                question = focus_question(question, focus)
+        pairs.append(("user", question))
+        pairs.append(("assistant", reply.content))
+    return pairs
+
+
 @router.post("/{session_id}/assist", response_model=AssistResult)
 async def assist(
     session_id: int, payload: AssistRequest, session: AsyncSession = Depends(get_session)
@@ -496,7 +535,7 @@ async def post_chat(
             select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id)
         )
     )
-    history_pairs = [(message.role, message.content) for message in history_rows]
+    history_pairs = _answered_history(text_row, history_rows)
 
     user_row = ChatMessage(
         session_id=row.id,

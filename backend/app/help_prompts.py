@@ -129,6 +129,11 @@ def build_tutor_system_prompt(*, text: str) -> str:
 {_TUTOR_RULES}"""
 
 
+def focus_question(question: str, focus_sentence: str) -> str:
+    """A question about one sentence, as the model sees it."""
+    return f"About this sentence: {focus_sentence.strip()}\n\n{question.strip()}"
+
+
 def build_tutor_messages(
     *,
     text: str,
@@ -138,8 +143,8 @@ def build_tutor_messages(
 ) -> list[dict[str, str]]:
     """The full `messages` array for one tutor-chat call: the system frame
     above, then every prior turn of this session's conversation (oldest
-    first, exactly as stored -- a past turn never gets its own focus prefix
-    re-added here, only the *new* question below does), then the new
+    first, as `api/sessions.py`'s `_answered_history` prepares them: only
+    answered questions, each with its own focus prefix), then the new
     question itself, prefixed with the focus sentence when there is one
     ("About this sentence: ...").
 
@@ -153,6 +158,6 @@ def build_tutor_messages(
 
     final_question = question.strip()
     if focus_sentence:
-        final_question = f"About this sentence: {focus_sentence.strip()}\n\n{final_question}"
+        final_question = focus_question(final_question, focus_sentence)
     messages.append({"role": "user", "content": final_question})
     return messages

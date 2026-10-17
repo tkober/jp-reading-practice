@@ -436,3 +436,46 @@ async def test_summary_counts_chat_questions_and_their_cost(
     # every kind's weight, tutor included.
     assert body["helps_per_100_words"] == round(6 / metrics["words"] * 100, 1)
     assert body["assists_cost_usd"] > 0
+
+
+async def test_a_failed_question_is_left_out_of_the_history_sent_to_the_model(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api import sessions as sessions_api
+
+    async def failing(*, config, messages):
+        raise GenerationError("The OpenAI API returned HTTP 500: boom", status=502)
+
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+
+    monkeypatch.setattr(sessions_api, "generate_chat_answer", failing)
+    await client.post(f"/api/sessions/{session_id}/chat", json={"content": "質問です。"})
+
+    calls: list[list[dict]] = []
+    _patch_answer(monkeypatch, text="答えです。", calls=calls)
+    await client.post(f"/api/sessions/{session_id}/chat", json={"content": "質問です。"})
+
+    # The resend is the only question the model sees -- not the failed one too.
+    assert [m["role"] for m in calls[0]] == ["system", "user"]
+
+
+async def test_an_earlier_focused_question_keeps_its_focus_in_the_history(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    token_id = _token_id(text_row, "水")
+    calls: list[list[dict]] = []
+
+    _patch_answer(monkeypatch, text="water", calls=calls)
+    await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={"content": "これは何の意味ですか？", "focus_token_id": token_id},
+    )
+    await client.post(f"/api/sessions/{session_id}/chat", json={"content": "もう一度？"})
+
+    assert calls[1][1] == {
+        "role": "user",
+        "content": "About this sentence: 水を飲みます。\n\nこれは何の意味ですか？",
+    }

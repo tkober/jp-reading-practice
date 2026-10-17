@@ -619,11 +619,13 @@ prompt for this one question only.
 120 words unless asked for more, never translate the whole text in one go
 (offer to go sentence by sentence and start with the first), redirect
 anything unrelated to the text/its words/its grammar back to it in one
-short sentence. Every prior message of this session (oldest first, exactly
-as stored) follows as plain `user`/`assistant` turns -- a past turn never
-gets its own focus prefix re-added, only the *new* question does, as
-`"About this sentence: <sentence>\n\n<question>"` when `focus_token_id` was
-given. `app/assist.py`'s `generate_chat_answer` sends this `messages` array
+short sentence. The session's earlier *answered* questions follow as
+`user`/`assistant` turns, oldest first (`api/sessions.py`'s
+`_answered_history`): a question whose call failed stays in the panel but is
+never sent again, so a resend does not reach the model twice. Every focused
+question -- past or new -- is sent as
+`"About this sentence: <sentence>\n\n<question>"` (`focus_question`); the
+stored message keeps the raw text and the sentence key. `app/assist.py`'s `generate_chat_answer` sends this `messages` array
 as-is, sharing `generate_help_answer`'s own `_post_chat_completion`/
 `_parse_completion` (so a no-key/upstream failure is handled identically)
 and its 60s timeout -- both go through `RuntimeConfig.help_model`.
