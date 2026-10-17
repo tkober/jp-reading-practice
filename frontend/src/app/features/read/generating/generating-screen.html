@@ -1,0 +1,23 @@
+<sumi-session-gate
+  title="Preparing your text"
+  text="This takes a few seconds."
+  [showAction]="false"
+  companion="fukurou"
+>
+  <ol class="steps">
+    @for (step of steps(); track step.label) {
+      <li class="step" [class.step--done]="step.state === 'done'" [class.step--running]="step.state === 'running'">
+        <span class="marker">
+          @if (step.state === 'done') {
+            <sumi-icon name="check" />
+          } @else if (step.state === 'running') {
+            <span class="spinner" aria-hidden="true"></span>
+          } @else {
+            <span class="dot" aria-hidden="true"></span>
+          }
+        </span>
+        <span class="label">{{ step.label }}</span>
+      </li>
+    }
+  </ol>
+</sumi-session-gate>

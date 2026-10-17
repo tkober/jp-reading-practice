@@ -1,0 +1,9 @@
+<sumi-session-gate
+  [title]="titleJapanese()"
+  [text]="summaryLine()"
+  actionLabel="Start reading"
+  companion="fukurou"
+  (start)="start.emit()"
+>
+  <sumi-segmented-bar ariaLabel="Measured JLPT mix" [segments]="jlptSegments()" [legend]="true" />
+</sumi-session-gate>

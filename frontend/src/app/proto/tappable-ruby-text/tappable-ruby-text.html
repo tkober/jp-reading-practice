@@ -1,0 +1,27 @@
+@for (paragraph of paragraphs(); track $index; let paragraphIndex = $index) {
+  <p class="paragraph">
+    @for (word of paragraph; track word.id; let wordIndex = $index) {
+      <span
+        #wordRef
+        role="button"
+        tabindex="0"
+        class="word"
+        [class.word--selected]="word.id === selectedWordId()"
+        [class.word--unknown]="word.unknown"
+        [class.word--pressing]="word.id === pressingWordId()"
+        [attr.aria-pressed]="word.id === selectedWordId()"
+        (click)="onActivate(word, $event)"
+        (keydown)="onKeydown($event, word, flatIndex(paragraphIndex, wordIndex))"
+        (pointerenter)="onPointerEnter($event, word)"
+        (pointerleave)="onPointerLeave($event, word)"
+        (pointerdown)="onPointerDown($event, word)"
+        (pointermove)="onPointerMove($event, word)"
+        (pointerup)="onPointerUp($event, word)"
+        (pointercancel)="onPointerCancel(word)"
+        (focus)="onFocus(word)"
+        (blur)="onBlur(word)"
+        >@if (showsReading(word)) {<ruby>{{ word.text }}<rt>{{ word.reading }}</rt></ruby>} @else {{{ word.text }}}</span
+      >
+    }
+  </p>
+}

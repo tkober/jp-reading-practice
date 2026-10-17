@@ -1,0 +1,120 @@
+:host {
+  display: block;
+  // Pinned to the viewport (not `sumi-app-shell__main`'s own scroll
+  // container — `position: sticky` here would stick relative to *that*,
+  // not the window, so `top`/`height` could not be computed against the
+  // header from plain CSS) while the text column scrolls past it, instead
+  // of growing to the column's full (often much taller) content height —
+  // otherwise the composer at the bottom would need its own scroll to
+  // reach. `top`/`height` are set from TS (measured header height), see
+  // the component.
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  z-index: 30;
+}
+
+.backdrop {
+  display: none;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-3);
+  width: 340px;
+  height: 100%;
+  border-left: 1px solid var(--sumi-line);
+  background: var(--sumi-surface);
+  padding: var(--sumi-space-4);
+}
+
+@media (max-width: 720px) {
+  :host {
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 50;
+  }
+
+  .backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgb(0 0 0 / 35%);
+    border: none;
+    padding: 0;
+  }
+
+  .panel {
+    position: relative;
+    width: auto;
+    height: 100%;
+    border-left: none;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h2 {
+    margin: 0;
+    font-size: var(--sumi-text-md);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-2);
+}
+
+.message {
+  margin: 0;
+  max-width: 85%;
+  padding: var(--sumi-space-2) var(--sumi-space-3);
+  border-radius: var(--sumi-radius);
+  background: var(--sumi-sunken);
+  font-size: var(--sumi-text-sm);
+  line-height: 1.5;
+  align-self: flex-start;
+
+  &--user {
+    align-self: flex-end;
+    background: var(--sumi-accent-soft);
+  }
+
+  &--pending {
+    color: var(--sumi-muted);
+  }
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-2);
+
+  textarea {
+    width: 100%;
+    resize: none;
+  }
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+}

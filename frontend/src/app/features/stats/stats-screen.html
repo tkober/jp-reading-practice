@@ -1,0 +1,52 @@
+<sumi-page title="Stats">
+  @if (summary(); as s) {
+    <sumi-stat-grid>
+      <sumi-stat-tile
+        [value]="s.speedCharsPerMinute"
+        label="字/min"
+        hint="reading speed"
+        [delta]="s.speedDeltaPercent"
+      />
+      <sumi-stat-tile [value]="s.helpsPerHundred" label="helps / 100 words" />
+      <sumi-stat-tile [value]="s.comprehensionPercent + '%'" label="comprehension" />
+      <sumi-stat-tile [value]="s.readingLevel" label="reading level" [hint]="s.readingLevelDetail" />
+    </sumi-stat-grid>
+
+    <section class="chart-section">
+      <h2>Speed over the last sessions</h2>
+      <sumi-line-chart
+        ariaLabel="Reading speed over the last sessions"
+        [points]="speedSeries()"
+        [series]="[{ key: 'speed', label: '字/min' }]"
+        [table]="true"
+      />
+    </section>
+
+    <section class="chart-section">
+      <h2>Helps per 100 words</h2>
+      <sumi-line-chart
+        ariaLabel="Helps per 100 words over the last sessions"
+        [points]="helpsSeries()"
+        [series]="[{ key: 'helps', label: 'Helps/100' }]"
+        [table]="true"
+      />
+    </section>
+
+    <section class="chart-section">
+      <h2>Speed by style</h2>
+      <sumi-bar-chart ariaLabel="Reading speed by style" [bars]="speedByStyle()" [table]="true" />
+    </section>
+
+    @if (problemWords().length > 0) {
+      <section class="chart-section">
+        <h2>Problem words</h2>
+        <p class="hint">Looked up in several texts.</p>
+        <sumi-data-table [columns]="problemWordsColumns" [rows]="problemWordsRows()" />
+      </section>
+    }
+  } @else {
+    <sumi-empty-state title="Not enough data yet" companion="fukurou">
+      Finish at least three reading sessions to see your stats here.
+    </sumi-empty-state>
+  }
+</sumi-page>

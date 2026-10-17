@@ -1,0 +1,20 @@
+<sumi-page title="Topics">
+  <button sumiPageActions type="button" sumiButton variant="primary" (click)="newTopic.emit()">
+    New topic
+  </button>
+
+  <div class="grid">
+    @for (topic of topics(); track topic.id) {
+      <sumi-card [interactive]="true">
+        <button type="button" class="tile-button" (click)="editTopic.emit(topic.id)">
+          <span class="glyph" lang="ja">{{ topic.glyph }}</span>
+          <span class="name">{{ topic.name }}</span>
+          <span class="meta">Default: {{ topic.defaultStyle }}</span>
+          <sumi-badge [tone]="topic.customized ? 'accent' : 'neutral'">
+            {{ topic.customized ? 'Customized' : 'Built-in' }}
+          </sumi-badge>
+        </button>
+      </sumi-card>
+    }
+  </div>
+</sumi-page>

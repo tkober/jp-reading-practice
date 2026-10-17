@@ -1,0 +1,36 @@
+<div
+  class="track"
+  role="group"
+  [attr.aria-label]="ariaLabel()"
+>
+  <div class="bar">
+    @for (segment of segments(); track segment.level) {
+      <div class="segment" [style.width.%]="segment.percent" [style.background]="segment.color"></div>
+    }
+  </div>
+
+  @for (boundary of boundaries(); track boundary.afterIndex) {
+    <input
+      type="range"
+      class="handle"
+      min="0"
+      max="100"
+      step="1"
+      [attr.aria-label]="boundary.ariaLabel"
+      [attr.aria-valuetext]="boundary.value + '%'"
+      [disabled]="disabled()"
+      [value]="boundary.value"
+      (input)="onBoundaryInput(boundary.afterIndex, $any($event.target).value)"
+    />
+  }
+</div>
+
+<ul class="legend">
+  @for (segment of segments(); track segment.level) {
+    <li class="legend__item">
+      <span class="legend__swatch" [style.background]="segment.color"></span>
+      <span class="legend__label">{{ segment.label }}</span>
+      <span class="legend__value">{{ segment.percent }}%</span>
+    </li>
+  }
+</ul>

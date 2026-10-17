@@ -1,0 +1,9 @@
+<sumi-error-state title="Couldn't generate a text" companion="fukurou">
+  {{ message() }}
+  <button sumiErrorAction type="button" sumiButton variant="secondary" (click)="backToSetup.emit()">
+    Back to setup
+  </button>
+  <button sumiErrorAction type="button" sumiButton variant="primary" (click)="retry.emit()">
+    Try again
+  </button>
+</sumi-error-state>

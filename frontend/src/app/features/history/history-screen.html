@@ -1,0 +1,15 @@
+<sumi-page title="History">
+  @if (sessions().length > 0) {
+    <sumi-data-table
+      [columns]="columns"
+      [rows]="rows()"
+      rowKey="id"
+      [activatable]="true"
+      (rowActivate)="onRowActivate($event)"
+    />
+  } @else {
+    <sumi-empty-state title="No reading sessions yet" companion="fukurou">
+      Generate and finish your first text to see it here.
+    </sumi-empty-state>
+  }
+</sumi-page>

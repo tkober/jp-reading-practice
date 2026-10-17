@@ -1,0 +1,71 @@
+.grid {
+  display: grid;
+  // Phone: 2 columns, so all 8 tiles (7 topics + Surprise me) read as a
+  // clean 4-row block. Desktop: a fixed 4 columns rather than
+  // `auto-fill` — with 8 tiles `auto-fill`'s own column count depends on
+  // how wide a tile a glyph like ニュース happens to need, which could
+  // otherwise wrap that one tile's text onto two lines while the rest
+  // stay on one.
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sumi-space-3);
+}
+
+@media (min-width: 720px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .tile {
+    min-height: 88px;
+    padding: var(--sumi-space-3) var(--sumi-space-2);
+  }
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sumi-space-1);
+  // Shorter on phone (where it is one of 8 competing for vertical space
+  // above the fold) than desktop, still comfortably above the 44px tap
+  // target minimum.
+  min-height: 72px;
+  padding: var(--sumi-space-2);
+  border: 1px solid var(--sumi-line);
+  border-radius: var(--sumi-radius);
+  background: var(--sumi-surface);
+  color: var(--sumi-text);
+  font-family: var(--sumi-font-ui);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--sumi-accent-ink);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &--selected {
+    border-color: var(--sumi-accent);
+    background: var(--sumi-accent-soft);
+  }
+}
+
+.glyph {
+  font-size: var(--sumi-text-2xl);
+  line-height: 1;
+}
+
+.name {
+  font-size: var(--sumi-text-xs);
+  color: var(--sumi-text-2);
+  text-align: center;
+}
+
+.tile--selected .name {
+  color: var(--sumi-text);
+  font-weight: 600;
+}

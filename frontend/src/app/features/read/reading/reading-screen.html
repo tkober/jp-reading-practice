@@ -1,0 +1,108 @@
+<div sumiFocusMode class="layout">
+  <!--
+    `sumi-session-bar` is built around a quiz's answered/correct/accuracy —
+    none of which this screen has. Rather than force-fit it (and its
+    hardcoded "End session" button) onto a reading session, this registers
+    its own bar in the same focus-actions slot: elapsed time, pause/resume,
+    and the furigana toggle. A candidate for its own sumi-ui issue once this
+    design is approved.
+  -->
+  <ng-template sumiShellFocusActions>
+    <div class="session-bar">
+      <span class="timer sumi-tabular" aria-label="Elapsed time">{{ elapsedLabel() }}</span>
+
+      <!-- Below 720px: one compact row of icon-only buttons so the header
+           never wraps onto several lines and pushes the brand around. -->
+      <div class="compact-actions">
+        <button
+          type="button"
+          class="icon-btn"
+          [attr.aria-label]="paused() ? 'Resume' : 'Pause'"
+          [attr.aria-pressed]="paused()"
+          title="{{ paused() ? 'Resume' : 'Pause' }}"
+          (click)="pauseToggle.emit()"
+        >
+          <span aria-hidden="true">{{ paused() ? '▶' : '❚❚' }}</span>
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          aria-label="Ask about this text"
+          title="Ask about this text"
+          (click)="chatToggle.emit()"
+        >
+          <sumi-icon name="chat" />
+        </button>
+      </div>
+
+      <!-- From 720px up: the same actions with their text labels. -->
+      <div class="full-actions">
+        <button type="button" sumiButton variant="ghost" size="sm" (click)="pauseToggle.emit()">
+          {{ paused() ? 'Resume' : 'Pause' }}
+        </button>
+        <button type="button" sumiButton variant="ghost" size="sm" (click)="chatToggle.emit()">
+          Ask about this text
+        </button>
+      </div>
+    </div>
+  </ng-template>
+
+  <div class="columns" [class.columns--chat-open]="chatOpen()">
+    <div class="text-column">
+      <!--
+        Paused blurs the text instead of hiding it — strongly enough that
+        it genuinely cannot be read, not a thin frosted-glass effect — so
+        the page does not jump when pausing/resuming and the reader can
+        still see roughly where they were. The text itself stays mounted
+        (not `pointer-events: none`'d away from the DOM) so nothing about
+        the word/ruby state is lost across a pause.
+      -->
+      <div class="text-stage">
+        <div
+          class="text-blurrable"
+          [class.text-blurrable--paused]="paused()"
+          [attr.inert]="paused() ? '' : null"
+        >
+          <h1 class="title" lang="ja">{{ text().titleJapanese }}</h1>
+          <proto-tappable-ruby-text
+            [paragraphs]="text().paragraphs"
+            [selectedWordId]="selectedWordId()"
+            [forcePeekWordId]="previewForcePeekWordId()"
+            (wordActivate)="wordActivate.emit($event)"
+            (readingPeeked)="readingPeeked.emit($event)"
+          />
+        </div>
+
+        @if (paused()) {
+          <div class="pause-overlay">
+            <p>Paused</p>
+            <button type="button" sumiButton variant="primary" (click)="pauseToggle.emit()">Resume</button>
+          </div>
+        }
+      </div>
+
+      <div class="done-bar">
+        <button type="button" sumiButton variant="primary" size="lg" (click)="doneReading.emit()">
+          Done reading
+        </button>
+      </div>
+    </div>
+
+    @if (chatOpen()) {
+      <proto-side-panel
+        [messages]="chatMessages()"
+        [sending]="chatSending()"
+        (close)="chatToggle.emit()"
+        (send)="chatSend.emit($event)"
+      />
+    }
+  </div>
+
+  <proto-word-popover-sheet
+    [word]="selectedWord()"
+    [anchorRect]="selectedWordAnchor()"
+    [answer]="wordAnswer()"
+    (close)="closeWord.emit()"
+    (action)="wordAction.emit($event)"
+  />
+</div>

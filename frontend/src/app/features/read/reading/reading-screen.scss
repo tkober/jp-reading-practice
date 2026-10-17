@@ -1,0 +1,176 @@
+.layout {
+  display: block;
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-2);
+  // Never wraps: below 720px the icon-only row keeps this to a handful of
+  // small, fixed-size buttons that always fit next to the timer and brand.
+  flex-wrap: nowrap;
+}
+
+.timer {
+  font-size: var(--sumi-text-md);
+  font-weight: 600;
+  min-width: 3em;
+  flex-shrink: 0;
+}
+
+.compact-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sumi-space-1);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--sumi-radius-sm);
+  background: transparent;
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-md);
+  line-height: 1;
+  cursor: pointer;
+
+  sumi-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover {
+    background: var(--sumi-sunken);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--sumi-focus-ring);
+  }
+
+  &[aria-pressed='true'] {
+    color: var(--sumi-accent-ink);
+    background: var(--sumi-accent-soft);
+  }
+}
+
+.full-actions {
+  display: none;
+  align-items: center;
+  gap: var(--sumi-space-3);
+}
+
+@media (min-width: 720px) {
+  .compact-actions {
+    display: none;
+  }
+
+  .full-actions {
+    display: flex;
+  }
+}
+
+.columns {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+// `proto-side-panel` is `position: fixed` on desktop (see its own scss for
+// why), so it no longer shares space with `.text-column` through flexbox —
+// this reserves its width by hand so the text never runs underneath it.
+@media (min-width: 721px) {
+  .columns--chat-open {
+    padding-right: 340px;
+  }
+}
+
+.text-column {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sumi-space-6) var(--sumi-space-4) var(--sumi-space-8);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.title {
+  font-family: var(--sumi-font-display);
+  font-size: var(--sumi-text-2xl);
+  margin: 0 0 var(--sumi-space-5) 0;
+}
+
+.text-stage {
+  position: relative;
+}
+
+// Blurred, not removed — strongly enough that the text genuinely cannot
+// be read at either font size (22px desktop / 19px phone, see
+// `tappable-ruby-text.scss`), with contrast and opacity pulled down too
+// so a sharp letterform never "pokes through" the blur at the edges of a
+// stroke. `inert` (template) on top takes it out of the tab order and
+// disables pointer events natively, so `pointer-events: none` here is
+// only a visual-safety fallback for browsers that honour one without the
+// other.
+.text-blurrable {
+  transition: filter 0.2s ease, opacity 0.2s ease;
+
+  &--paused {
+    filter: blur(8px) contrast(0.6);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-blurrable {
+    transition: none;
+  }
+}
+
+.pause-overlay {
+  // Fixed to the viewport, not to the text block: on a long text the block's
+  // centre can be far off screen, and the learner must see Resume wherever
+  // they paused. Transparent to the pointer except for its own contents, so
+  // the reading bar above stays usable.
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sumi-space-4);
+  color: var(--sumi-text);
+
+  p {
+    margin: 0;
+    font-size: var(--sumi-text-lg);
+    font-weight: 600;
+  }
+}
+
+.done-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  margin-top: var(--sumi-space-6);
+  padding: var(--sumi-space-3) 0;
+  background: linear-gradient(to top, var(--sumi-bg) 60%, transparent);
+
+  button {
+    width: 100%;
+    max-width: 320px;
+  }
+}

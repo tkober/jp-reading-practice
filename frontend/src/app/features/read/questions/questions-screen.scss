@@ -1,0 +1,22 @@
+.progress-label {
+  margin: 0 0 var(--sumi-space-2) 0;
+  font-size: var(--sumi-text-sm);
+  color: var(--sumi-text-2);
+  font-weight: 600;
+}
+
+sumi-progress {
+  display: block;
+  margin-bottom: var(--sumi-space-5);
+}
+
+.question-text {
+  font-size: var(--sumi-text-lg);
+  margin: 0 0 var(--sumi-space-5) 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--sumi-space-5);
+}
