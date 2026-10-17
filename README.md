@@ -32,6 +32,15 @@ npm start   # proxies /api to :8000, see proxy.conf.json
 Or both together: `./dev.sh` (needs `backend/.env`, copied from
 `backend/.env.example`).
 
+The word popover's dictionary needs a one-time build step before it has
+anything to look up: `cd backend && uv run python scripts/build_jmdict.py`
+(and again whenever the image is rebuilt -- `backend/Dockerfile` runs it
+too). It downloads [JMdict][jmdict] (EDRDG, CC BY-SA 4.0 -- see
+`backend/app/data/LICENSES.md`) and writes a compact SQLite; without it,
+`/api/analysis` still works, just without dictionary entries.
+
+[jmdict]: https://www.edrdg.org/jmdict/j_jmdict.html
+
 ## Deploying to unraid
 
 Two GHCR images (`ghcr.io/tkober/jp-reading-practice-backend` / `-frontend`),

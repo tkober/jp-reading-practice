@@ -16,6 +16,10 @@ dependencies = [
     # mcp 2.0 renamed FastMCP to MCPServer and changed the client transport
     # API too -- moving is a deliberate migration of its own.
     "mcp>=1.30,<2",
+    # Tokenisation/furigana, same pairing as jp-conversation-practice's
+    # furigana.py (issue #7's "take over its ruby splitting").
+    "fugashi>=1.5.2",
+    "unidic-lite>=1.0.8",
 ]
 
 [dependency-groups]
