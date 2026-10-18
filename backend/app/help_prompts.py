@@ -100,6 +100,63 @@ name the pattern and say briefly what it is doing *here*, in this sentence.
 At most 120 words."""
 
 
+# --- Partial-sentence selection (issue #32) ---------------------------------
+#
+# "Translate part"/"Explain grammar (part)" act on a learner-selected span
+# within a sentence rather than the whole of it (a span counts less than
+# the whole sentence -- see `helps.py`'s weights) -- same shape and the
+# same word limits as their whole-sentence counterparts above, just with
+# the span itself as the thing to translate/explain and the sentence
+# containing it folded in as extra context (on top of the whole text,
+# which every builder already gives the model).
+
+
+def build_translate_part_instructions(*, text: str, span: str, sentence: str) -> str:
+    """"Translate part": the same shape as
+    `build_translate_sentence_instructions`, but for a span within a
+    sentence -- at most 60 words, the same limit as the sentence
+    version."""
+    return f"""{_ROLE}
+
+{_context_block(text)}
+
+# The question
+Translate this part of a sentence from the text above into natural English:
+{span.strip()}
+
+For context, here is the full sentence it is part of:
+{sentence.strip()}
+
+First give the translation of just that part, on its own. Then, on a new
+line, one short note on anything in it a learner at this level would likely
+misread or misparse -- or nothing at all if there is no real risk of that.
+
+At most 60 words in total."""
+
+
+def build_explain_grammar_part_instructions(*, text: str, span: str, sentence: str) -> str:
+    """"Explain grammar (part)": the same shape as
+    `build_explain_grammar_instructions`, but for a span within a sentence
+    -- at most 120 words, the same limit as the sentence version."""
+    return f"""{_ROLE}
+
+{_context_block(text)}
+
+# The question
+Explain the grammar of this part of a sentence from the text above:
+{span.strip()}
+
+For context, here is the full sentence it is part of:
+{sentence.strip()}
+
+Name the 1 to 3 grammar points that actually carry this part's meaning (for
+example a particle's role, a verb form, a conditional or causative pattern)
+-- not a word-by-word breakdown of everything in it. For each one, name the
+pattern and say briefly what it is doing *here*, in this part.
+
+At most 120 words."""
+
+
 # --- Tutor chat (issue #11) --------------------------------------------------
 
 _TUTOR_RULES = """You are chatting with the learner about the text above, one question at a
@@ -134,30 +191,46 @@ def focus_question(question: str, focus_sentence: str) -> str:
     return f"About this sentence: {focus_sentence.strip()}\n\n{question.strip()}"
 
 
+def focus_question_part(question: str, focus_span: str, focus_sentence: str) -> str:
+    """A question about a selected span within a sentence (issue #32), as
+    the model sees it -- the span itself plus the sentence it is part of,
+    for context."""
+    return (
+        f"About this part of a sentence: {focus_span.strip()} "
+        f"(in: {focus_sentence.strip()})\n\n{question.strip()}"
+    )
+
+
 def build_tutor_messages(
     *,
     text: str,
     history: Sequence[tuple[str, str]],
     question: str,
     focus_sentence: str | None = None,
+    focus_span: str | None = None,
 ) -> list[dict[str, str]]:
     """The full `messages` array for one tutor-chat call: the system frame
     above, then every prior turn of this session's conversation (oldest
     first, as `api/sessions.py`'s `_answered_history` prepares them: only
     answered questions, each with its own focus prefix), then the new
-    question itself, prefixed with the focus sentence when there is one
-    ("About this sentence: ...").
+    question itself, prefixed with its focus when there is one -- the span
+    ("About this part of a sentence: ...", issue #32) when `focus_span` is
+    given, the whole sentence ("About this sentence: ...") otherwise.
 
     `history` is `(role, content)` pairs, already in the order they were
     asked -- `api/sessions.py`'s `post_chat` reads them straight from
-    `db.ChatMessage` before the new question is appended.
+    `db.ChatMessage` before the new question is appended. `focus_span`
+    without `focus_sentence` is treated as no focus at all -- the span
+    prefix always needs the sentence for its own "(in: ...)" context.
     """
     messages = [{"role": "system", "content": build_tutor_system_prompt(text=text)}]
     for role, content in history:
         messages.append({"role": role, "content": content})
 
     final_question = question.strip()
-    if focus_sentence:
+    if focus_span and focus_sentence:
+        final_question = focus_question_part(final_question, focus_span, focus_sentence)
+    elif focus_sentence:
         final_question = focus_question(final_question, focus_sentence)
     messages.append({"role": "user", "content": final_question})
     return messages

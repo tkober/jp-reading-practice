@@ -1,10 +1,12 @@
 """`split_sentences()`/`find_sentence()` (issue #10): sentence boundaries
 for "Translate sentence"/"Explain grammar", including quotes and a
-paragraph without a final 。."""
+paragraph without a final 。; `resolve_span()`/`span_target()`/
+`parse_span_target()` (issue #32): the partial-sentence span these two
+helps and the tutor chat's own span focus all share."""
 
 from __future__ import annotations
 
-from app.sentences import find_sentence, split_sentences
+from app.sentences import find_sentence, parse_span_target, resolve_span, span_target, split_sentences
 
 
 def _pairs(*surfaces: str) -> list[tuple[str, str]]:
@@ -12,6 +14,12 @@ def _pairs(*surfaces: str) -> list[tuple[str, str]]:
     paragraph index is irrelevant to the splitter itself, only to the key
     format, so every test here uses paragraph 0."""
     return [(f"0-{i}", surface) for i, surface in enumerate(surfaces)]
+
+
+def _triples(*words: tuple[str, bool]) -> list[tuple[str, str, bool]]:
+    """`(token_id, surface, is_word)` triples with ids `"0-0"`, `"0-1"`,
+    ... -- `resolve_span`'s own input shape."""
+    return [(f"0-{i}", surface, is_word) for i, (surface, is_word) in enumerate(words)]
 
 
 def test_splits_two_simple_sentences() -> None:
@@ -79,3 +87,62 @@ def test_sentence_keys_use_the_given_paragraph_index() -> None:
     tokens = [(f"2-{i}", surface) for i, surface in enumerate(["水", "。"])]
     sentences = split_sentences(2, tokens)
     assert sentences[0].key == "2-0"
+
+
+# --- resolve_span() / span_target() / parse_span_target() (issue #32) ------
+
+# 水(word) を(particle) 飲む(word) 。(ender) 猫(word) が(particle) いる(word) 。(ender)
+_SPAN_TOKENS = _triples(
+    ("水", True),
+    ("を", False),
+    ("飲む", True),
+    ("。", False),
+    ("猫", True),
+    ("が", False),
+    ("いる", True),
+    ("。", False),
+)
+
+
+def test_resolve_span_across_two_words_in_one_sentence() -> None:
+    span = resolve_span(0, _SPAN_TOKENS, "0-0", "0-2")
+
+    assert span is not None
+    assert span.sentence.key == "0-0"
+    assert span.start_token_id == "0-0"
+    assert span.end_token_id == "0-2"
+    assert span.text == "水を飲む"  # を rides along, even though it cannot be an endpoint
+
+
+def test_resolve_span_none_for_fewer_than_two_word_tokens() -> None:
+    # 水 alone, or 水を (one word, one particle) -- either way only one
+    # *word* token.
+    assert resolve_span(0, _SPAN_TOKENS, "0-0", "0-0") is None
+    assert resolve_span(0, _SPAN_TOKENS, "0-0", "0-1") is None
+
+
+def test_resolve_span_none_across_different_sentences() -> None:
+    assert resolve_span(0, _SPAN_TOKENS, "0-0", "0-6") is None
+
+
+def test_resolve_span_none_when_start_comes_after_end() -> None:
+    assert resolve_span(0, _SPAN_TOKENS, "0-2", "0-0") is None
+
+
+def test_resolve_span_none_for_an_unknown_token() -> None:
+    assert resolve_span(0, _SPAN_TOKENS, "0-0", "no-such-token") is None
+
+
+def test_span_target_round_trips_through_parse_span_target() -> None:
+    target = span_target("0-1", "0-3", "0-7")
+    assert target == "0-1:0-3-0-7"
+    assert parse_span_target(target) == ("0-1", "0-3", "0-7")
+
+
+def test_parse_span_target_returns_none_for_a_plain_sentence_key() -> None:
+    assert parse_span_target("0-1") is None
+
+
+def test_parse_span_target_handles_multi_digit_indices() -> None:
+    target = span_target("12-1", "12-33", "12-104")
+    assert parse_span_target(target) == ("12-1", "12-33", "12-104")

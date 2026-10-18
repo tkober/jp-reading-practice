@@ -35,10 +35,13 @@ from ..db import (
 from ..generation import GenerationError
 from ..help_prompts import (
     build_explain_grammar_instructions,
+    build_explain_grammar_part_instructions,
     build_explain_word_instructions,
+    build_translate_part_instructions,
     build_translate_sentence_instructions,
     build_tutor_messages,
     focus_question,
+    focus_question_part,
 )
 from ..helps import WEIGHTS, helps_per_100_words as _helps_per_100_words
 from ..models import (
@@ -65,7 +68,15 @@ from ..models import (
 )
 from ..pricing import cost_usd
 from ..runtime_config import load_runtime_config
-from ..sentences import Sentence, find_sentence, split_sentences
+from ..sentences import (
+    Sentence,
+    Span,
+    find_sentence,
+    parse_span_target,
+    resolve_span,
+    span_target,
+    split_sentences,
+)
 from .texts import _text_out
 
 router = APIRouter()
@@ -326,6 +337,24 @@ def _sentence_for_token(text_row: GeneratedText, token: dict) -> Sentence:
     return sentence
 
 
+def _resolve_span_for_text(
+    text_row: GeneratedText, start_token_id: str, end_token_id: str
+) -> Span | None:
+    """`sentences.resolve_span`, given only the text row and the two token
+    ids -- resolves the paragraph from `start_token_id`'s own
+    `"<paragraph>-<n>"` shape (same convention `_sentence_for_token` reads)
+    and builds the `(id, surface, is_word)` triples it needs. Shared by
+    `assist`'s `translate_part`/`grammar_part`, the tutor chat's own span
+    focus, and that chat's history replay (issue #32)."""
+    paragraph_index = int(start_token_id.split("-", 1)[0])
+    paragraphs = text_row.analysis["paragraphs"]
+    if paragraph_index < 0 or paragraph_index >= len(paragraphs):
+        return None
+    paragraph_tokens = paragraphs[paragraph_index]["tokens"]
+    triples = [(t["id"], t["surface"], t["is_word"]) for t in paragraph_tokens]
+    return resolve_span(paragraph_index, triples, start_token_id, end_token_id)
+
+
 def _sentence_texts(text_row: GeneratedText) -> dict[str, str]:
     """Every sentence of the text by key, for re-adding a past question's
     focus to the chat history."""
@@ -343,7 +372,16 @@ def _answered_history(
     """The conversation as the model should see it: only questions that got
     an answer (a failed one is kept for the learner, but resending it must
     not reach the model twice, or as two user turns in a row), each with
-    its focus sentence prefixed again exactly as it was when asked."""
+    its focus -- a sentence, or (issue #32) a span within one -- prefixed
+    again exactly as it was when asked.
+
+    `message.focus_sentence_key` is a plain sentence key for a
+    whole-sentence focus, or (issue #32) a `sentences.span_target` string
+    for a span one -- `parse_span_target` tells the two apart; a span's
+    own text is re-resolved from its two token ids (`_resolve_span_for_
+    text`) the same way a plain sentence's is looked up by key, never
+    stored redundantly.
+    """
     sentence_texts: dict[str, str] | None = None
     pairs: list[tuple[str, str]] = []
     for index, message in enumerate(rows):
@@ -354,11 +392,18 @@ def _answered_history(
             continue
         question = message.content
         if message.focus_sentence_key:
-            if sentence_texts is None:
-                sentence_texts = _sentence_texts(text_row)
-            focus = sentence_texts.get(message.focus_sentence_key)
-            if focus:
-                question = focus_question(question, focus)
+            parsed = parse_span_target(message.focus_sentence_key)
+            if parsed is not None:
+                _, start_id, end_id = parsed
+                span = _resolve_span_for_text(text_row, start_id, end_id)
+                if span is not None:
+                    question = focus_question_part(question, span.text, span.sentence.text)
+            else:
+                if sentence_texts is None:
+                    sentence_texts = _sentence_texts(text_row)
+                focus = sentence_texts.get(message.focus_sentence_key)
+                if focus:
+                    question = focus_question(question, focus)
         pairs.append(("user", question))
         pairs.append(("assistant", reply.content))
     return pairs
@@ -368,9 +413,16 @@ def _answered_history(
 async def assist(
     session_id: int, payload: AssistRequest, session: AsyncSession = Depends(get_session)
 ) -> AssistResult:
-    """Explain word / Translate sentence / Explain grammar. `explain` acts
-    on the tapped word itself (422 on a particle); `translate`/`grammar`
-    act on the sentence containing it (`_sentence_for_token`).
+    """Explain word / Translate sentence / Explain grammar, and their
+    partial-sentence counterparts Translate part / Explain grammar
+    (issue #32). `explain` acts on the tapped word itself (422 on a
+    particle); `translate`/`grammar` act on the sentence containing it
+    (`_sentence_for_token`); `translate_part`/`grammar_part` act on the
+    span from `token_id` to `end_token_id` instead (`sentences.
+    resolve_span`, via `_resolve_span_for_text`) -- 422 with a clear
+    message if `end_token_id` is missing, the two tokens are not in the
+    same sentence, start comes after end, or the inclusive span has fewer
+    than two word tokens.
 
     Cached by `(text_id, kind, target)` in `help_answers`: a cache hit never
     calls OpenAI, and the help event logged for it (see `_log_help`) costs
@@ -391,11 +443,34 @@ async def assist(
             detail="This token is a grammar particle, it cannot be explained as a word.",
         )
 
-    sentence = _sentence_for_token(text_row, token)
-    # "Explain word" explains the word *in this sentence*, so its target is
-    # the word within its sentence: the same lemma elsewhere in the text is
-    # a different question with a different answer.
-    target = f"{sentence.key}:{token['lemma']}" if payload.kind == "explain" else sentence.key
+    span: Span | None = None
+    if payload.kind in ("translate_part", "grammar_part"):
+        if payload.end_token_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="end_token_id is required for translate_part/grammar_part.",
+            )
+        if _find_token(text_row, payload.end_token_id) is None:
+            raise HTTPException(status_code=404, detail="Unknown end token.")
+        span = _resolve_span_for_text(text_row, payload.token_id, payload.end_token_id)
+        if span is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Select a span of at least two words within one sentence, "
+                    "start before end."
+                ),
+            )
+        sentence = span.sentence
+        target = span_target(sentence.key, span.start_token_id, span.end_token_id)
+    else:
+        sentence = _sentence_for_token(text_row, token)
+        # "Explain word" explains the word *in this sentence*, so its target
+        # is the word within its sentence: the same lemma elsewhere in the
+        # text is a different question with a different answer.
+        target = (
+            f"{sentence.key}:{token['lemma']}" if payload.kind == "explain" else sentence.key
+        )
 
     cached_row = await session.scalar(
         select(HelpAnswer).where(
@@ -431,8 +506,18 @@ async def assist(
         )
     elif payload.kind == "translate":
         prompt = build_translate_sentence_instructions(text=text_row.body, sentence=sentence.text)
-    else:
+    elif payload.kind == "grammar":
         prompt = build_explain_grammar_instructions(text=text_row.body, sentence=sentence.text)
+    elif payload.kind == "translate_part":
+        assert span is not None  # guaranteed by the branch above
+        prompt = build_translate_part_instructions(
+            text=text_row.body, span=span.text, sentence=sentence.text
+        )
+    else:  # "grammar_part"
+        assert span is not None  # guaranteed by the branch above
+        prompt = build_explain_grammar_part_instructions(
+            text=text_row.body, span=span.text, sentence=sentence.text
+        )
 
     try:
         answer, usage = await generate_help_answer(config=config, prompt=prompt)
@@ -518,10 +603,20 @@ async def post_chat(
     question and let the learner resend (a resend is simply a new question,
     there is nothing to retry server-side).
 
+    `focus_end_token_id` (issue #32) turns the focus into a span rather
+    than the whole sentence containing `focus_token_id` -- validated the
+    same way `/assist`'s `translate_part`/`grammar_part` are (`sentences.
+    resolve_span`): same sentence, start before end, >= 2 word tokens,
+    else 422. `ChatMessage.focus_sentence_key` then stores the span target
+    (`sentences.span_target`) rather than a plain sentence key -- see that
+    function's own docstring for why this needs no schema change.
+
     Every question is its own help event (`kind: "tutor"`, weight 3,
     `target: "chat:<user message id>"`, always unique) -- counted every
     time, never deduped the way a word/sentence target is (brief: "a
-    conversation is not a cacheable question").
+    conversation is not a cacheable question"); the span counts no
+    differently from a whole-sentence focus here (brief, issue #32: "Ask
+    tutor" stays +3 either way).
     """
     row = await _get_session_or_404(session, session_id)
     _require_status(row, "reading")
@@ -529,14 +624,36 @@ async def post_chat(
 
     focus_sentence_key: str | None = None
     focus_sentence_text: str | None = None
+    focus_span_text: str | None = None
     focus_token: dict | None = None
     if payload.focus_token_id is not None:
         focus_token = _find_token(text_row, payload.focus_token_id)
         if focus_token is None:
             raise HTTPException(status_code=404, detail="Unknown token.")
-        focus_sentence = _sentence_for_token(text_row, focus_token)
-        focus_sentence_key = focus_sentence.key
-        focus_sentence_text = focus_sentence.text
+
+        if payload.focus_end_token_id is not None:
+            if _find_token(text_row, payload.focus_end_token_id) is None:
+                raise HTTPException(status_code=404, detail="Unknown end token.")
+            span = _resolve_span_for_text(
+                text_row, payload.focus_token_id, payload.focus_end_token_id
+            )
+            if span is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Select a span of at least two words within one sentence, "
+                        "start before end."
+                    ),
+                )
+            focus_sentence_key = span_target(
+                span.sentence.key, span.start_token_id, span.end_token_id
+            )
+            focus_sentence_text = span.sentence.text
+            focus_span_text = span.text
+        else:
+            focus_sentence = _sentence_for_token(text_row, focus_token)
+            focus_sentence_key = focus_sentence.key
+            focus_sentence_text = focus_sentence.text
 
     history_rows = list(
         await session.scalars(
@@ -560,6 +677,7 @@ async def post_chat(
         history=history_pairs,
         question=payload.content,
         focus_sentence=focus_sentence_text,
+        focus_span=focus_span_text,
     )
 
     config = await load_runtime_config(session)

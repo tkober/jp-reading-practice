@@ -20,6 +20,7 @@ latter, and this module never needs more than those two fields).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -104,3 +105,100 @@ def find_sentence(
         if token_id in sentence.token_ids:
             return sentence
     return None
+
+
+# --- Partial-sentence selection (issue #32) ---------------------------------
+
+
+@dataclass(frozen=True)
+class Span:
+    """A validated word span within one sentence: its two endpoints, the
+    `Sentence` containing both, and the span's own text -- the joined
+    surfaces of every token from `start_token_id` to `end_token_id`,
+    inclusive. A plain (non-word) token caught strictly between the two
+    endpoints still contributes its surface here, even though it can never
+    be an endpoint itself -- same rule `sumi-reading-text`'s own
+    `rangeSelected` (sumi-ui) resolves a drag by."""
+
+    sentence: Sentence
+    start_token_id: str
+    end_token_id: str
+    text: str
+
+
+def resolve_span(
+    paragraph_index: int,
+    tokens: Sequence[tuple[str, str, bool]],
+    start_token_id: str,
+    end_token_id: str,
+) -> Span | None:
+    """Resolves a `(start_token_id, end_token_id)` pair to a `Span`, or
+    `None` if it does not qualify -- shared by `POST .../assist`'s
+    `translate_part`/`grammar_part` and the tutor chat's own span focus
+    (`api/sessions.py`), so both validate (and dedupe/target) a span by
+    exactly the same rule:
+
+    - both ids must resolve to a token in `tokens` (a plain `(id, surface,
+      is_word)` triple, the paragraph's own tokens in order -- either
+      `Token` or the plain dict a `GeneratedText.analysis` row stores both
+      work, since only those three fields are read);
+    - both must be in the *same* sentence (`split_sentences`);
+    - the start must not come after the end (sentence order, i.e. the
+      paragraph's own token order);
+    - the inclusive span must contain at least two *word* (`is_word`)
+      tokens -- a plain token in between still rides along in `text`, but
+      does not count towards this minimum.
+    """
+    sentences = split_sentences(paragraph_index, [(t[0], t[1]) for t in tokens])
+    start_sentence = next((s for s in sentences if start_token_id in s.token_ids), None)
+    end_sentence = next((s for s in sentences if end_token_id in s.token_ids), None)
+    if start_sentence is None or end_sentence is None or start_sentence.key != end_sentence.key:
+        return None
+
+    sentence = start_sentence
+    start_index = sentence.token_ids.index(start_token_id)
+    end_index = sentence.token_ids.index(end_token_id)
+    if start_index > end_index:
+        return None
+
+    span_ids = set(sentence.token_ids[start_index : end_index + 1])
+    span_tokens = [t for t in tokens if t[0] in span_ids]
+    word_count = sum(1 for t in span_tokens if t[2])
+    if word_count < 2:
+        return None
+
+    return Span(
+        sentence=sentence,
+        start_token_id=start_token_id,
+        end_token_id=end_token_id,
+        text="".join(t[1] for t in span_tokens),
+    )
+
+
+#: `span_target`'s own shape, parsed back apart by `parse_span_target` --
+#: every id here is `"<paragraph index>-<n>"` (`Token.id`/`Sentence.key`'s
+#: own convention, `analysis.py`), with no hyphen of its own, so splitting
+#: on `:` and then on `-` is unambiguous.
+_SPAN_TARGET_RE = re.compile(r"^(\d+-\d+):(\d+-\d+)-(\d+-\d+)$")
+
+
+def span_target(sentence_key: str, start_token_id: str, end_token_id: str) -> str:
+    """The dedupe/cache target for a span help (issue #32): `"<sentence
+    key>:<start token id>-<end token id>"` -- `HelpEvent`/`HelpAnswer`'s
+    own `target` for `translate_part`/`grammar_part` (`api/sessions.py`'s
+    `assist`). Also reused, unparsed, as the tutor chat's own
+    `ChatMessage.focus_sentence_key` for a span-focused question -- no
+    schema change needed, the same way `help_events.kind` stays a plain
+    string to admit a new kind (see that column's own docstring);
+    `parse_span_target` recovers the three pieces from it."""
+    return f"{sentence_key}:{start_token_id}-{end_token_id}"
+
+
+def parse_span_target(value: str) -> tuple[str, str, str] | None:
+    """The reverse of `span_target`: `(sentence_key, start_token_id,
+    end_token_id)`, or `None` if `value` is not one (e.g. a plain sentence
+    key, as a non-span chat focus stores)."""
+    match = _SPAN_TARGET_RE.match(value)
+    if not match:
+        return None
+    return match.group(1), match.group(2), match.group(3)

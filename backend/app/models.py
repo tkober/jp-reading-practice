@@ -428,18 +428,27 @@ class WordLookupOut(BaseModel):
     known_status: str
 
 
-#: The word popover's three LLM action buttons (issue #10). "Ask tutor"
-#: (#11) stays a separate, later endpoint -- not a fourth value here.
-AssistKind = Literal["explain", "translate", "grammar"]
+#: The word popover's LLM action buttons: the three whole-word/sentence
+#: ones (issue #10) plus the partial-sentence span pair `translate_part`/
+#: `grammar_part` (issue #32, a span counts less than the whole sentence --
+#: see `helps.py`'s weights). "Ask tutor" (#11) stays a separate, later
+#: endpoint -- not a value here at all.
+AssistKind = Literal["explain", "translate", "grammar", "translate_part", "grammar_part"]
 
 
 class AssistRequest(BaseModel):
     """`POST /api/sessions/{id}/assist`'s body. `explain` acts on the word
     itself (`token_id` must be `is_word`, 422 otherwise); `translate`/
-    `grammar` act on the sentence containing it."""
+    `grammar` act on the sentence containing it. `translate_part`/
+    `grammar_part` (issue #32) act on a span instead: `token_id` is its
+    start, `end_token_id` its end -- both tokens must be in the same
+    sentence, start before end, with at least two word tokens in between
+    (inclusive), else 422 (`api/sessions.py`'s `assist`, via
+    `sentences.resolve_span`). Unset/ignored for the other three kinds."""
 
     kind: AssistKind
     token_id: str
+    end_token_id: str | None = None
 
 
 class AssistResult(BaseModel):
@@ -531,10 +540,18 @@ class ChatRequest(BaseModel):
     word whose *sentence* becomes "About this sentence: ..." in the prompt
     sent for this one question (`help_prompts.build_tutor_messages`) --
     unset for a question asked from the session bar's own chat action,
-    which carries no focus at all."""
+    which carries no focus at all. `focus_end_token_id` (issue #32) is set
+    in addition only when "Ask tutor" was opened from a selected span
+    rather than a single word -- the focus then becomes that span itself
+    ("About this part of a sentence: ...", `help_prompts.
+    build_tutor_messages`'s own `focus_span`), validated the same way
+    `AssistRequest`'s own span pair is (same sentence, start before end,
+    >= 2 word tokens, else 422). Ignored (not even looked at) without
+    `focus_token_id`."""
 
     content: str
     focus_token_id: str | None = None
+    focus_end_token_id: str | None = None
 
     @field_validator("content")
     @classmethod

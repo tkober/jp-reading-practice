@@ -422,6 +422,158 @@ async def test_assist_unknown_token_is_404(client: AsyncClient, session: AsyncSe
     assert response.status_code == 404
 
 
+# --- translate_part / grammar_part (issue #32) ------------------------------
+
+
+async def test_translate_part_generates_and_caches_with_the_span_target(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")  # both in "水を飲みます。"
+    calls: list[str] = []
+    _patch_answer(monkeypatch, text="I drink water.", calls=calls)
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id, "end_token_id": end_id},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "kind": "translate_part",
+        "answer": "I drink water.",
+        "cached": False,
+        "counted": True,
+        "weight": 2,  # a span counts less than the whole sentence (+3)
+    }
+    assert len(calls) == 1
+    assert "水を飲み" in calls[0]  # the span itself was given to the prompt
+
+    cached_row = await session.scalar(select(HelpAnswer).where(HelpAnswer.text_id == text_row.id))
+    assert cached_row is not None
+    assert cached_row.kind == "translate_part"
+    assert cached_row.target == f"0-0:{start_id}-{end_id}"
+
+
+async def test_grammar_part_weight_is_two(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")
+    _patch_answer(monkeypatch, text="を marks the object.")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        json={"kind": "grammar_part", "token_id": start_id, "end_token_id": end_id},
+    )
+    assert response.status_code == 200
+    assert response.json()["weight"] == 2
+
+
+async def test_translate_part_cache_hit_across_two_sessions(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")
+    calls: list[str] = []
+    _patch_answer(monkeypatch, text="I drink water.", calls=calls)
+
+    first_session_id = await _new_session_id(client, text_row.id)
+    first = await client.post(
+        f"/api/sessions/{first_session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id, "end_token_id": end_id},
+    )
+    assert first.json()["cached"] is False
+
+    second_session_id = await _new_session_id(client, text_row.id)
+    second = await client.post(
+        f"/api/sessions/{second_session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id, "end_token_id": end_id},
+    )
+    assert second.json()["cached"] is True
+    assert len(calls) == 1
+
+
+async def test_translate_part_without_end_token_id_is_422(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id},
+    )
+    assert response.status_code == 422
+    assert "end_token_id" in response.json()["detail"]
+
+
+async def test_translate_part_single_word_span_is_422(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    # 水 alone (even with itself as both ends) is only one word token.
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id, "end_token_id": start_id},
+    )
+    assert response.status_code == 422
+
+
+async def test_translate_part_across_sentences_is_422(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")  # "水を飲みます。"
+    end_id = _token_id(text_row, "猫")  # "猫がいます。" -- a different sentence
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id, "end_token_id": end_id},
+    )
+    assert response.status_code == 422
+
+
+async def test_translate_part_start_after_end_is_422(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        # Swapped: end_token_id comes before token_id in the sentence.
+        json={"kind": "translate_part", "token_id": end_id, "end_token_id": start_id},
+    )
+    assert response.status_code == 422
+
+
+async def test_translate_part_unknown_end_token_is_404(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/assist",
+        json={"kind": "translate_part", "token_id": start_id, "end_token_id": "no-such-token"},
+    )
+    assert response.status_code == 404
+
+
 # --- migration 0004's backfill ----------------------------------------------
 
 
