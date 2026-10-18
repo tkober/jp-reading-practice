@@ -5,6 +5,7 @@ import type { SumiTileOption } from 'sumi-ui/forms';
 import { Api, ApiError, KanjiTrainerStatusUnavailable } from '../../core/api';
 import type {
   PresetsApi,
+  SuggestionApi,
   TextCreatePayload,
   TextOutApi,
   TextOverridesApi,
@@ -24,6 +25,7 @@ import {
   type ReadingLength,
   type TextStyle,
 } from '../../features/read/setup/setup.types';
+import { applySuggestionToSetup } from '../../features/read/setup/suggestion-apply';
 
 type ReadPageState = 'setup' | 'generating' | 'gate' | 'error';
 
@@ -100,6 +102,22 @@ export class ReadPage {
   protected readonly generationSteps = signal<readonly GenerationStep[]>(INITIAL_STEPS);
   protected readonly errorMessage = signal('');
   protected readonly textOut = signal<TextOutApi | null>(null);
+
+  // --- "Suggest next text" (issue #14) ------------------------------------
+
+  protected readonly suggesting = signal(false);
+  protected readonly suggestion = signal<SuggestionApi | null>(null);
+  protected readonly suggestionError = signal<string | null>(null);
+
+  /**
+   * The suggestion "Use this" last applied, as long as topic/length/preset
+   * still match it exactly -- cleared the moment any of those three is
+   * changed by hand (brief: "a learner who changed things did not 'use'
+   * it"). Sent as `suggestion_id` on the next `POST /api/texts`; the
+   * backend re-checks the same match before marking it used, so this is
+   * never the only guard.
+   */
+  private readonly appliedSuggestionId = signal<number | null>(null);
 
   private lastPayload: TextCreatePayload | null = null;
 
@@ -194,11 +212,13 @@ export class ReadPage {
 
   protected onTopicSelect(topicId: string): void {
     this.selectedTopicId.set(topicId);
+    this.appliedSuggestionId.set(null);
     this.persistSetup();
   }
 
   protected onLengthChange(length: ReadingLength): void {
     this.length.set(length);
+    this.appliedSuggestionId.set(null);
     this.persistSetup();
   }
 
@@ -211,6 +231,7 @@ export class ReadPage {
     this.styleTouched.set(false);
     this.kanjiTouched.set(false);
     this.jlptTouched.set(false);
+    this.appliedSuggestionId.set(null);
     this.persistSetup();
   }
 
@@ -268,9 +289,69 @@ export class ReadPage {
     if (Object.keys(overrides).length > 0) {
       payload.overrides = overrides;
     }
+    const suggestionId = this.appliedSuggestionId();
+    if (suggestionId !== null) {
+      payload.suggestion_id = suggestionId;
+    }
 
     this.lastPayload = payload;
     this.runGeneration(payload);
+  }
+
+  // --- "Suggest next text" (issue #14) ------------------------------------
+
+  protected onSuggestNext(): void {
+    this.suggesting.set(true);
+    this.suggestionError.set(null);
+    this.suggestion.set(null);
+
+    this.api.suggestNext().then(
+      (suggestion) => {
+        this.suggesting.set(false);
+        this.suggestion.set(suggestion);
+      },
+      (error: unknown) => {
+        this.suggesting.set(false);
+        this.suggestionError.set(
+          error instanceof Error ? error.message : 'The suggestion could not be generated.',
+        );
+      },
+    );
+  }
+
+  /**
+   * Applies the suggestion to the setup controls -- never generates
+   * anything itself (brief). Dismisses the card the same way "Dismiss"
+   * does: once applied, there is nothing more for it to show.
+   */
+  protected onUseSuggestion(): void {
+    const current = this.suggestion();
+    if (!current) {
+      return;
+    }
+    const applied = applySuggestionToSetup(current);
+    const defaults = this.effectiveDefaults(applied.preset);
+
+    this.selectedTopicId.set(applied.topicId);
+    this.length.set(applied.length);
+    this.preset.set(applied.preset);
+    this.unknownKanjiSharePercent.set(
+      applied.unknownKanjiSharePercent ?? defaults.unknownKanjiSharePercent,
+    );
+    this.jlptMix.set(applied.jlptMix ?? defaults.jlptMix);
+    this.style.set(applied.style ?? defaults.style);
+    this.kanjiTouched.set(applied.unknownKanjiSharePercent !== undefined);
+    this.jlptTouched.set(applied.jlptMix !== undefined);
+    this.styleTouched.set(applied.style !== undefined);
+    this.adjustOpen.set(applied.adjustOpen);
+
+    this.appliedSuggestionId.set(current.id);
+    this.suggestion.set(null);
+    this.persistSetup();
+  }
+
+  protected onDismissSuggestion(): void {
+    this.suggestion.set(null);
   }
 
   // --- generating / gate / error -----------------------------------------

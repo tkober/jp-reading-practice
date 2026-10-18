@@ -26,6 +26,7 @@ import type {
   Settings,
   SettingsPatch,
   StatsApi,
+  SuggestionApi,
   TextCreatePayload,
   TextOutApi,
   TopicApi,
@@ -245,6 +246,17 @@ export class Api {
 
   summary(id: number): Promise<SessionSummaryApi> {
     return this.get(`/api/sessions/${id}/summary`);
+  }
+
+  // --- AI suggestions (issue #14) -------------------------------------------
+
+  /**
+   * "Suggest next text" on the setup screen -- one suggestion, based on the
+   * learner's own history/stats/Stretch settings; the backend stores it so
+   * `createText()`'s own `suggestion_id` can mark it used later.
+   */
+  suggestNext(): Promise<SuggestionApi> {
+    return firstValueFrom(this.http.post<SuggestionApi>('/api/suggestions', {})).catch(rethrow);
   }
 
   // --- History / Stats / Export (issue #12) ---------------------------------

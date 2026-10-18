@@ -12,6 +12,9 @@
       [adjustOpen]="adjustOpen()"
       [hasOpenAiKey]="hasOpenAiKey()"
       [kanjiTrainerOnline]="kanjiTrainerOnline()"
+      [suggesting]="suggesting()"
+      [suggestion]="suggestion()"
+      [suggestionError]="suggestionError()"
       (topicSelect)="onTopicSelect($event)"
       (lengthChange)="onLengthChange($event)"
       (presetChange)="onPresetChange($event)"
@@ -20,6 +23,9 @@
       (styleChange)="onStyleChange($event)"
       (adjustToggle)="onAdjustToggle()"
       (generate)="onGenerate()"
+      (suggestNext)="onSuggestNext()"
+      (useSuggestion)="onUseSuggestion()"
+      (dismissSuggestion)="onDismissSuggestion()"
     />
   }
   @case ('generating') {

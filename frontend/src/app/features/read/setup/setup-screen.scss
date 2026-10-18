@@ -24,6 +24,48 @@ h2[sumiCardHeader] {
   &--note {
     color: var(--sumi-accent-ink);
   }
+
+  &--error {
+    color: var(--sumi-wrong);
+  }
+}
+
+.suggest-trigger {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--sumi-space-3);
+}
+
+.suggestion-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sumi-space-2);
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: var(--sumi-space-2);
+    font-weight: 600;
+  }
+
+  &__glyph {
+    font-size: 1.25em;
+  }
+
+  &__meta {
+    margin: 0;
+  }
+
+  &__reason {
+    margin: 0;
+    color: var(--sumi-text-1);
+  }
+
+  &__actions {
+    display: flex;
+    gap: var(--sumi-space-2);
+    margin-top: var(--sumi-space-1);
+  }
 }
 
 .adjust-toggle {

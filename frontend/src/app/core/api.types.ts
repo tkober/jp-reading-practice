@@ -175,12 +175,16 @@ export interface TextOverridesApi {
   jlpt_mix?: JlptMixTargetApi;
 }
 
-/** Mirrors the backend's `TextCreateRequest`, `POST /api/texts`'s body. */
+/** Mirrors the backend's `TextCreateRequest`, `POST /api/texts`'s body.
+ *  `suggestion_id` (issue #14) is set when the learner generated straight
+ *  from a suggestion's "Use this" -- the backend only marks it used when
+ *  `topic_slug`/`length`/`preset` here still match the suggestion exactly. */
 export interface TextCreatePayload {
   topic_slug: string;
   length: ReadingLengthApi;
   preset: DifficultyPresetApi;
   overrides?: TextOverridesApi;
+  suggestion_id?: number;
 }
 
 /** Mirrors the backend's `QuestionOut` -- never carries `answer_index`. */
@@ -477,6 +481,28 @@ export interface PresetsApi {
   easy: PresetOutApi;
   stretch: StretchPresetOutApi;
   challenge: PresetOutApi;
+}
+
+// --- AI suggestions (issue #14) ----------------------------------------------
+
+/** Mirrors the backend's `SuggestionOverridesOut` -- same fraction (0..1)
+ *  convention as `TextOverridesApi`, every field optional. */
+export interface SuggestionOverridesApi {
+  style?: TopicStyleApi | null;
+  unknown_kanji_target?: number | null;
+  jlpt_mix?: Required<JlptMixTargetApi> | null;
+}
+
+/** Mirrors the backend's `SuggestionOut`, `POST /api/suggestions`'s
+ *  response -- `overrides` is `null` when the suggestion preferred a plain
+ *  preset, which the setup screen then never opens "Adjust" for. */
+export interface SuggestionApi {
+  id: number;
+  topic_slug: string;
+  length: ReadingLengthApi;
+  preset: DifficultyPresetApi;
+  overrides: SuggestionOverridesApi | null;
+  reason: string;
 }
 
 /**

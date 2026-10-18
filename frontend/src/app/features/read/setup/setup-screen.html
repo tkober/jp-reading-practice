@@ -13,6 +13,48 @@
     </sumi-banner>
   }
 
+  <div class="suggest-trigger">
+    <button type="button" sumiButton [disabled]="suggesting()" (click)="suggestNext.emit()">
+      {{ suggesting() ? 'Thinking…' : 'Suggest next text' }}
+    </button>
+  </div>
+
+  @if (suggesting()) {
+    <sumi-card>
+      <p class="hint">Thinking…</p>
+    </sumi-card>
+  } @else if (suggestionError()) {
+    <sumi-card>
+      <p class="hint hint--error">{{ suggestionError() }}</p>
+    </sumi-card>
+  } @else if (suggestion(); as current) {
+    <sumi-card>
+      <div class="suggestion-card">
+        <div class="suggestion-card__title">
+          @if (suggestionTopicTile(); as tile) {
+            <span class="suggestion-card__glyph" lang="ja">{{ tile.glyph }}</span>
+            <span>{{ tile.label }}</span>
+          } @else {
+            <span>{{ current.topic_slug }}</span>
+          }
+        </div>
+        <p class="suggestion-card__meta hint">
+          {{ suggestionLengthLabel() }} · {{ suggestionPresetLabel() }}
+          @if (suggestionOverridesLine(); as overridesLine) {
+            · {{ overridesLine }}
+          }
+        </p>
+        <p class="suggestion-card__reason">{{ current.reason }}</p>
+        <div class="suggestion-card__actions">
+          <button type="button" sumiButton variant="primary" (click)="useSuggestion.emit()">
+            Use this
+          </button>
+          <button type="button" sumiButton (click)="dismissSuggestion.emit()">Dismiss</button>
+        </div>
+      </div>
+    </sumi-card>
+  }
+
   <sumi-card>
     <h2 sumiCardHeader>Topic</h2>
     <!-- `sumi-tile-picker`'s `value` is a plain `T` (`model<T>()`, no null
