@@ -1,5 +1,4 @@
 import { Component, computed, input, output } from '@angular/core';
-import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiCard, SumiHanko, SumiPage } from 'sumi-ui/layout';
 import { SumiSessionGate, SumiSessionSummary, SumiSummaryTile } from 'sumi-ui/practice';
 import { SumiDataTable, type SumiTableColumn, type SumiTableRow } from 'sumi-ui/charts';
@@ -11,7 +10,6 @@ import type { LookedUpWord } from './summary.types';
   styleUrl: './summary-screen.scss',
   imports: [
     SumiPage,
-    SumiButtonDirective,
     SumiCard,
     SumiHanko,
     SumiSessionGate,

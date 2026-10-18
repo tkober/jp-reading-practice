@@ -630,6 +630,20 @@ def _qualifies_for_stretch_adjustment(text_row: GeneratedText) -> bool:
     return not overrides_used.get("unknown_kanji_target") and not overrides_used.get("jlpt_mix")
 
 
+async def _text_read_before(session: AsyncSession, row: ReadingSession) -> bool:
+    """Whether another session already finished this session's text."""
+    earlier = await session.scalar(
+        select(ReadingSession.id)
+        .where(
+            ReadingSession.text_id == row.text_id,
+            ReadingSession.status == "finished",
+            ReadingSession.id != row.id,
+        )
+        .limit(1)
+    )
+    return earlier is not None
+
+
 async def _apply_stretch_adjustment(
     session: AsyncSession, row: ReadingSession, text_row: GeneratedText, questions: list[dict]
 ) -> None:
@@ -691,7 +705,11 @@ async def answer_question(
         # Issue #13: nudge Stretch's own difficulty, in this same
         # transaction -- see `_qualifies_for_stretch_adjustment`'s
         # docstring for exactly which sessions this applies to.
-        if _qualifies_for_stretch_adjustment(text_row):
+        # A re-read of the same text never moves it: it is easier for reasons
+        # that say nothing about the level (same rule as the reading pace).
+        if _qualifies_for_stretch_adjustment(text_row) and not await _text_read_before(
+            session, row
+        ):
             await _apply_stretch_adjustment(session, row, text_row, questions)
 
     await session.commit()

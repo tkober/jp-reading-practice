@@ -540,6 +540,21 @@ async def test_stretch_session_without_overrides_gets_harder(
     assert summary.json()["stretch_adjustment"] == "harder"
 
 
+async def test_re_reading_a_stretch_text_does_not_move_stretch(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session, preset="stretch")
+    first = (await client.post("/api/sessions", json={"text_id": text_row.id})).json()["id"]
+    await _finish_with_answers(client, first, [0, 1])
+    again = (await client.post("/api/sessions", json={"text_id": text_row.id})).json()["id"]
+    await _finish_with_answers(client, again, [0, 1])
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert [row.session_id for row in rows] == [first]
+    summary = await client.get(f"/api/sessions/{again}/summary")
+    assert summary.json()["stretch_adjustment"] is None
+
+
 async def test_a_second_answer_round_cannot_double_count(
     client: AsyncClient, session: AsyncSession
 ) -> None:

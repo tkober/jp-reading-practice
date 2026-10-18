@@ -18,6 +18,7 @@ const LOOKED_UP_WORDS: readonly LookedUpWord[] = [
       [questionsTotal]="3"
       [activeTimeMs]="252000"
       [lookedUpWords]="lookedUpWords"
+      stretchNote="Stretch is now a little harder."
     />
   `,
   imports: [SummaryScreen],

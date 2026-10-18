@@ -798,7 +798,9 @@ applied after a session finishes, only when its text was generated with
 preset `stretch` and *no* JLPT-mix/unknown-kanji overrides
 (`api/sessions.py`'s `_qualifies_for_stretch_adjustment`, reading the text's
 own `params["preset"]`/`params["overrides_used"]` -- see "Generation"
-below):
+below), and only on the text's *first* finished read (`_text_read_before`):
+a re-read is easier for reasons that say nothing about the level, the same
+reason the reading pace ignores re-reads:
 
 - **harder** (`+D_STEP`): helps/100 words <= `HARDER_HELPS_MAX` (3) *and*
   comprehension >= `HARDER_COMPREHENSION_MIN` (80%).
