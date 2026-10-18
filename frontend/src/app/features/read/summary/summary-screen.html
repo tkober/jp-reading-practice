@@ -1,28 +1,29 @@
 <sumi-page [inkEnd]="false">
   <!--
-    `sumi-session-summary`'s own action button is always `variant="primary"`
-    (not something this app can override) — so the action that should read
-    as primary ("New text") goes there, and "Read again" is this screen's
-    own, deliberately secondary, button next to it. Only one ink place on
-    this page: the gate's own companion scene, not also one at the page end
-    (`[inkEnd]="false"` above), the same way the other apps do it.
+    "New text" is the summary's primary action, "Read again" its secondary
+    one (sumi-ui#102); the Stretch note sits in the details slot above both.
+    Only one ink place on this page: the gate's own companion scene, not also
+    one at the page end (`[inkEnd]="false"` above).
   -->
   <sumi-session-gate [showAction]="false" companion="fukurou">
     <sumi-session-summary
       [durationMs]="activeTimeMs()"
       headline="Text complete"
       actionLabel="New text"
+      secondaryActionLabel="Read again"
       (restart)="newText.emit()"
+      (secondaryAction)="readAgain.emit()"
     >
       <sumi-hanko sumiSummaryArt characters="読了" label="Finished reading" />
       <div sumiSummaryTile label="Speed">{{ speedCharsPerMinute() }} <small>字/min</small></div>
-      <div sumiSummaryTile label="Helps">{{ helpsPerHundredWords() }} <small>/100 words</small></div>
+      <div sumiSummaryTile label="Helps">
+        {{ helpsPerHundredWords() }} <small>/100 words</small>
+      </div>
       <div sumiSummaryTile label="Questions">{{ questionsCorrect() }}/{{ questionsTotal() }}</div>
+      @if (stretchNote(); as note) {
+        <p sumiSummaryDetails class="stretch-note">{{ note }}</p>
+      }
     </sumi-session-summary>
-
-    <div class="secondary-action">
-      <button type="button" sumiButton variant="secondary" (click)="readAgain.emit()">Read again</button>
-    </div>
   </sumi-session-gate>
 
   @if (lookedUpWords().length > 0) {

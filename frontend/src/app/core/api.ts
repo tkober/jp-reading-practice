@@ -17,6 +17,7 @@ import type {
   HistoryEntryApi,
   KanjiTrainerStatus,
   ModelCatalog,
+  PresetsApi,
   ReadingPaceApi,
   SessionOutApi,
   SessionSummaryApi,
@@ -141,6 +142,15 @@ export class Api {
 
   readingPace(): Promise<ReadingPaceApi> {
     return this.get('/api/reading/pace');
+  }
+
+  /**
+   * The three presets' resolved generation targets (issue #13) -- `stretch`
+   * resolved at its current, adaptive difficulty. The setup screen reads
+   * this instead of its own hard-coded `DIFFICULTY_PRESETS` table.
+   */
+  presets(): Promise<PresetsApi> {
+    return this.get('/api/presets');
   }
 
   // --- reading sessions (issue #9) ------------------------------------------

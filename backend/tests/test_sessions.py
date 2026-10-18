@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import kanji_trainer as kt
 from app.analysis import analyze
-from app.db import GeneratedText, ReadingSession
+from app.api import sessions as sessions_api
+from app.db import GeneratedText, ReadingSession, StretchAdjustment
 from app.known_set import KnownSet
 from tests.test_kanji_trainer import _build_app, _free_port, _running, _State
 
@@ -27,18 +29,28 @@ QUESTIONS = [
 ]
 
 
-async def _create_text(session: AsyncSession, *, body: str = BODY, questions=None) -> GeneratedText:
+async def _create_text(
+    session: AsyncSession,
+    *,
+    body: str = BODY,
+    questions=None,
+    preset: str = "easy",
+    overrides_used: dict | None = None,
+) -> GeneratedText:
     text_analysis = analyze(body, KnownSet(), {})
+    params = {
+        "topic_slug": "daily-life",
+        "length": "short",
+        "preset": preset,
+        "unknown_kanji_target": 0.02,
+        "jlpt_mix": {},
+        "style": "casual",
+    }
+    if overrides_used is not None:
+        params["overrides_used"] = overrides_used
     row = GeneratedText(
         topic_id=None,
-        params={
-            "topic_slug": "daily-life",
-            "length": "short",
-            "preset": "easy",
-            "unknown_kanji_target": 0.02,
-            "jlpt_mix": {},
-            "style": "casual",
-        },
+        params=params,
         title="水曜日",
         body=body,
         questions=list(questions if questions is not None else QUESTIONS),
@@ -478,3 +490,176 @@ async def test_pace_ignores_rereads_of_the_same_text(
     body = (await client.get("/api/reading/pace")).json()
     assert body["sessions"] == 3
     assert body["chars_per_minute"] == round(characters / 2.0)
+
+
+# --- Stretch's adaptive difficulty (issue #13) -------------------------------
+
+FOUR_QUESTIONS = [
+    {"question": "Q1", "options": ["a", "b"], "answer_index": 0},
+    {"question": "Q2", "options": ["a", "b"], "answer_index": 0},
+    {"question": "Q3", "options": ["a", "b"], "answer_index": 0},
+    {"question": "Q4", "options": ["a", "b"], "answer_index": 0},
+]
+
+
+async def _finish_with_answers(
+    client: AsyncClient, session_id: int, option_indexes: list[int]
+) -> None:
+    await client.post(
+        f"/api/sessions/{session_id}/finish-reading", json={"active_ms": 60000, "paused_ms": 0}
+    )
+    for index, option_index in enumerate(option_indexes):
+        await client.post(
+            f"/api/sessions/{session_id}/answers",
+            json={"question_index": index, "option_index": option_index},
+        )
+
+
+async def test_stretch_session_without_overrides_gets_harder(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """No helps, perfect comprehension -> "harder": `d` moves from the
+    default 1.0 to 1.1, the row is idempotent per session, and the summary
+    carries the one quiet line."""
+    text_row = await _create_text(session, preset="stretch")
+    created = await client.post("/api/sessions", json={"text_id": text_row.id})
+    session_id = created.json()["id"]
+
+    await _finish_with_answers(client, session_id, [0, 1])  # both correct
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert len(rows) == 1
+    assert rows[0].session_id == session_id
+    assert rows[0].d_before == pytest.approx(1.0)
+    assert rows[0].d_after == pytest.approx(1.1)
+    assert rows[0].reason == "harder"
+    assert rows[0].helps_per_100_words == 0.0
+    assert rows[0].comprehension == pytest.approx(100.0)
+
+    summary = await client.get(f"/api/sessions/{session_id}/summary")
+    assert summary.json()["stretch_adjustment"] == "harder"
+
+
+async def test_re_reading_a_stretch_text_does_not_move_stretch(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session, preset="stretch")
+    first = (await client.post("/api/sessions", json={"text_id": text_row.id})).json()["id"]
+    await _finish_with_answers(client, first, [0, 1])
+    again = (await client.post("/api/sessions", json={"text_id": text_row.id})).json()["id"]
+    await _finish_with_answers(client, again, [0, 1])
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert [row.session_id for row in rows] == [first]
+    summary = await client.get(f"/api/sessions/{again}/summary")
+    assert summary.json()["stretch_adjustment"] is None
+
+
+async def test_a_second_answer_round_cannot_double_count(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """`stretch_adjustments.session_id` is unique -- even if something ever
+    called the apply path twice for the same session, it would stay one
+    row (the finish transition itself only ever happens once per session,
+    but the dedupe is the actual guarantee, not that assumption)."""
+    text_row = await _create_text(session, preset="stretch")
+    created = await client.post("/api/sessions", json={"text_id": text_row.id})
+    session_id = created.json()["id"]
+    await _finish_with_answers(client, session_id, [0, 1])
+
+    row = await session.get(ReadingSession, session_id)
+    text = await session.get(GeneratedText, text_row.id)
+    assert row is not None and text is not None
+    await sessions_api._apply_stretch_adjustment(session, row, text, text.questions)
+    await session.commit()
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert len(rows) == 1  # still just the one row
+
+
+async def test_easy_session_never_gets_a_stretch_adjustment(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session, preset="easy")
+    created = await client.post("/api/sessions", json={"text_id": text_row.id})
+    session_id = created.json()["id"]
+    await _finish_with_answers(client, session_id, [0, 1])
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert rows == []
+    summary = await client.get(f"/api/sessions/{session_id}/summary")
+    assert summary.json()["stretch_adjustment"] is None
+
+
+async def test_stretch_session_with_an_override_is_ignored(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(
+        session,
+        preset="stretch",
+        overrides_used={"unknown_kanji_target": True, "jlpt_mix": False},
+    )
+    created = await client.post("/api/sessions", json={"text_id": text_row.id})
+    session_id = created.json()["id"]
+    await _finish_with_answers(client, session_id, [0, 1])
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert rows == []
+
+
+async def test_stretch_session_with_a_jlpt_mix_override_is_also_ignored(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(
+        session,
+        preset="stretch",
+        overrides_used={"unknown_kanji_target": False, "jlpt_mix": True},
+    )
+    created = await client.post("/api/sessions", json={"text_id": text_row.id})
+    session_id = created.json()["id"]
+    await _finish_with_answers(client, session_id, [0, 1])
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert rows == []
+
+
+async def test_stretch_session_builds_on_the_previous_d(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """A second qualifying session starts from the first one's `d_after`,
+    not from the static default again."""
+    first_text = await _create_text(session, preset="stretch")
+    first_created = await client.post("/api/sessions", json={"text_id": first_text.id})
+    first_id = first_created.json()["id"]
+    await _finish_with_answers(client, first_id, [0, 1])  # -> harder, d=1.1
+
+    second_text = await _create_text(session, preset="stretch")
+    second_created = await client.post("/api/sessions", json={"text_id": second_text.id})
+    second_id = second_created.json()["id"]
+    await _finish_with_answers(client, second_id, [0, 1])  # -> harder again, d=1.2
+
+    rows = {row.session_id: row for row in await session.scalars(select(StretchAdjustment))}
+    assert rows[first_id].d_before == pytest.approx(1.0)
+    assert rows[first_id].d_after == pytest.approx(1.1)
+    assert rows[second_id].d_before == pytest.approx(1.1)
+    assert rows[second_id].d_after == pytest.approx(1.2)
+
+
+async def test_unchanged_reason_is_recorded_but_the_summary_stays_quiet(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """75% comprehension (3/4) with no helps lands in the comfortable
+    middle: not >= 80% (no "harder"), not < 60% (no "easier")."""
+    text_row = await _create_text(session, preset="stretch", questions=FOUR_QUESTIONS)
+    created = await client.post("/api/sessions", json={"text_id": text_row.id})
+    session_id = created.json()["id"]
+
+    await _finish_with_answers(client, session_id, [0, 0, 0, 1])  # 3 correct, 1 wrong
+
+    rows = list(await session.scalars(select(StretchAdjustment)))
+    assert len(rows) == 1
+    assert rows[0].reason == "unchanged"
+    assert rows[0].d_after == pytest.approx(rows[0].d_before)
+
+    summary = await client.get(f"/api/sessions/{session_id}/summary")
+    assert summary.json()["stretch_adjustment"] is None

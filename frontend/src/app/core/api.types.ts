@@ -360,6 +360,11 @@ export interface SessionSummaryApi {
   assists_cost_usd: number;
   /** Number of tutor-chat questions asked this session (issue #11). */
   chat_questions: number;
+  /** `'harder'`/`'easier'` when this session moved Stretch's own
+   *  difficulty (issue #13), `null` otherwise -- not a stretch session, an
+   *  overridden one, or the rule decided "unchanged" (see the backend's
+   *  `SessionSummaryOut.stretch_adjustment`). */
+  stretch_adjustment: 'harder' | 'easier' | null;
 }
 
 /** Mirrors the backend's `ReadingPaceOut`, `GET /api/reading/pace`. */
@@ -421,7 +426,10 @@ export interface ProblemWordApi {
 }
 
 /** Mirrors the backend's `StatsOut`, `GET /api/stats` -- `summary` (and
- *  every list) is `null`/empty together under three finished sessions. */
+ *  every list) is `null`/empty together under three finished sessions.
+ *  `stretch_level_series`/`stretch_now` (issue #13) follow the same rule,
+ *  plus their own: both are empty/`null` together whenever Stretch has
+ *  never adjusted yet, regardless of `summary`. */
 export interface StatsApi {
   summary: StatsSummaryApi | null;
   speed_series: SeriesPointApi[];
@@ -429,6 +437,35 @@ export interface StatsApi {
   speed_by_style: SpeedByGroupApi[];
   speed_by_topic: SpeedByGroupApi[];
   problem_words: ProblemWordApi[];
+  stretch_level_series: SeriesPointApi[];
+  stretch_now: string | null;
+}
+
+// --- Stretch presets (issue #13) --------------------------------------------
+
+/** Mirrors the backend's `PresetOut`. */
+export interface PresetOutApi {
+  unknown_kanji_target: number;
+  jlpt_mix: Required<JlptMixTargetApi>;
+}
+
+/** Mirrors the backend's `StretchAdjustmentNoteOut`. */
+export interface StretchAdjustmentNoteApi {
+  reason: 'harder' | 'easier' | 'unchanged';
+  created_at: string;
+}
+
+/** Mirrors the backend's `StretchPresetOut`. */
+export interface StretchPresetOutApi extends PresetOutApi {
+  d: number;
+  last_adjustment: StretchAdjustmentNoteApi | null;
+}
+
+/** Mirrors the backend's `PresetsOut`, `GET /api/presets`. */
+export interface PresetsApi {
+  easy: PresetOutApi;
+  stretch: StretchPresetOutApi;
+  challenge: PresetOutApi;
 }
 
 /**

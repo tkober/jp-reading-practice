@@ -400,6 +400,47 @@ class ChatMessage(Base):
     )
 
 
+class StretchAdjustment(Base):
+    """One after-session nudge of Stretch's own difficulty `d` (issue #13).
+
+    Inserted at most once per session -- the unique constraint on
+    `session_id` is the idempotency itself, same `ON CONFLICT DO NOTHING`
+    convention `help_events` uses (see `app.stretch_store.record_adjustment`)
+    -- in the same transaction that flips a `reading_sessions` row to
+    `finished` (`api/sessions.py`'s `answer_question`), only for a session
+    whose text was generated with preset `stretch` and no JLPT-mix/unknown-
+    kanji overrides (`app.stretch_store`'s callers check `texts.params`).
+
+    `d_before`/`d_after` are `app.stretch`'s own scale (`D_MIN`..`D_MAX`);
+    `reason` is `"harder"`/`"easier"`/`"unchanged"` -- recorded even when
+    nothing moved, so the history (the Stats "Stretch level" chart) shows
+    every qualifying session, not only the ones that changed something.
+    `helps_per_100_words`/`comprehension` are the exact numbers the rule
+    (`app.stretch.decide_reason`) was applied to, kept for that chart's own
+    "why" rather than only its result. Stretch's *current* difficulty is
+    simply the latest row's `d_after` (`app.stretch_store.current_d`), else
+    `app.stretch.D_START` when this table is empty.
+    """
+
+    __tablename__ = "stretch_adjustments"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_stretch_adjustments_session"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("reading_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    d_before: Mapped[float] = mapped_column(Float, nullable=False)
+    d_after: Mapped[float] = mapped_column(Float, nullable=False)
+    helps_per_100_words: Mapped[float] = mapped_column(Float, nullable=False)
+    comprehension: Mapped[float] = mapped_column(Float, nullable=False)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # --- engine ------------------------------------------------------------------
 
 _engine: AsyncEngine | None = None

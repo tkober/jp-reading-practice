@@ -470,6 +470,12 @@ class SessionSummaryOut(BaseModel):
     #: Number of tutor-chat questions asked this session (issue #11) -- one
     #: `help_events` row per question, `kind: "tutor"`, always counted.
     chat_questions: int = 0
+    #: `"harder"`/`"easier"` when this session moved Stretch's own
+    #: difficulty (issue #13), `null` otherwise -- not a stretch session, an
+    #: overridden one, or the rule decided `"unchanged"` (recorded in
+    #: `stretch_adjustments` either way, but the summary's own one-line note
+    #: only ever reads as a change, never "nothing happened").
+    stretch_adjustment: Literal["harder", "easier"] | None = None
 
 
 # --- Tutor chat (issue #11) --------------------------------------------------
@@ -609,7 +615,14 @@ class ProblemWordOut(BaseModel):
 class StatsOut(BaseModel):
     """`GET /api/stats`'s response. `summary` (and every list below) is
     `None`/empty together, under `stats_math.STATS_MIN_SESSIONS` finished
-    sessions -- the frontend's existing empty state, nothing partial."""
+    sessions -- the frontend's existing empty state, nothing partial.
+
+    `stretch_level_series`/`stretch_now` (issue #13) follow the same
+    all-or-nothing rule, plus one of their own: both are empty/`null`
+    together whenever no `stretch_adjustments` row exists yet, regardless of
+    `summary` -- the Stats "Stretch level" section is hidden until Stretch
+    has actually adjusted at least once.
+    """
 
     summary: StatsSummaryOut | None = None
     speed_series: list[SeriesPointOut] = Field(default_factory=list)
@@ -617,6 +630,54 @@ class StatsOut(BaseModel):
     speed_by_style: list[SpeedByGroupOut] = Field(default_factory=list)
     speed_by_topic: list[SpeedByGroupOut] = Field(default_factory=list)
     problem_words: list[ProblemWordOut] = Field(default_factory=list)
+    #: `d_after` per adjustment, oldest first -- the "Stretch level" line
+    #: chart's x axis is the adjustment's own date (`SeriesPointOut.date`).
+    stretch_level_series: list[SeriesPointOut] = Field(default_factory=list)
+    #: "Now: N5 45 · N4 35 · N3 18 · N2 2 · 5.5 % unknown kanji"
+    #: (`stretch.describe_mix`), Stretch's current resolved mix as one line.
+    stretch_now: str | None = None
+
+
+# --- Stretch presets (issue #13) ---------------------------------------------
+
+
+class PresetOut(BaseModel):
+    """One preset's resolved generation targets -- `GET /api/presets`'s
+    `easy`/`challenge` entries are exactly `presets.PRESETS`' own numbers;
+    `StretchPresetOut` (below) extends this for Stretch's own, adaptive
+    entry."""
+
+    unknown_kanji_target: float
+    jlpt_mix: JlptMixTarget
+
+
+class StretchAdjustmentNoteOut(BaseModel):
+    """The most recent `stretch_adjustments` row, as `GET /api/presets`
+    exposes it -- the setup screen's own "Stretch adapts..." note could
+    read this, though issue #13 only wires the Stats page's "Stretch
+    level" chart to it today."""
+
+    reason: Literal["harder", "easier", "unchanged"]
+    created_at: datetime
+
+
+class StretchPresetOut(PresetOut):
+    """Stretch's own entry in `GET /api/presets`'s response -- its resolved
+    targets (from `stretch.resolve(d)`) plus the `d` they were resolved at
+    and the last adjustment that moved it, if any."""
+
+    d: float
+    last_adjustment: StretchAdjustmentNoteOut | None = None
+
+
+class PresetsOut(BaseModel):
+    """`GET /api/presets`'s response -- the three presets' resolved values,
+    for the setup screen to read instead of its own hard-coded table (issue
+    #13 brief)."""
+
+    easy: PresetOut
+    stretch: StretchPresetOut
+    challenge: PresetOut
 
 
 # --- Export (issue #12) -------------------------------------------------------

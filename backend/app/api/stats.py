@@ -22,8 +22,16 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import dictionary, stats_math
-from ..db import ChatMessage, GeneratedText, HelpEvent, ReadingSession, Topic, get_session
+from .. import dictionary, stats_math, stretch
+from ..db import (
+    ChatMessage,
+    GeneratedText,
+    HelpEvent,
+    ReadingSession,
+    StretchAdjustment,
+    Topic,
+    get_session,
+)
 from ..helps import helps_per_100_words
 from ..models import (
     ExportChatMessageOut,
@@ -179,6 +187,8 @@ async def get_stats(session: AsyncSession = Depends(get_session)) -> StatsOut:
     if summary is None:
         return StatsOut(summary=None)
 
+    stretch_level_series, stretch_now = await _stretch_level_section(session)
+
     speed_by_style_values = stats_math.group_median_speed(finished_stats, "style")
     speed_by_style = [
         SpeedByGroupOut(label=style.capitalize(), value=round(speed_by_style_values[style]))
@@ -208,7 +218,32 @@ async def get_stats(session: AsyncSession = Depends(get_session)) -> StatsOut:
         speed_by_style=speed_by_style,
         speed_by_topic=speed_by_topic,
         problem_words=problem_words,
+        stretch_level_series=stretch_level_series,
+        stretch_now=stretch_now,
     )
+
+
+async def _stretch_level_section(
+    session: AsyncSession,
+) -> tuple[list[SeriesPointOut], str | None]:
+    """Issue #13's "Stretch level" section: `d_after` per adjustment, oldest
+    first, plus Stretch's current resolved mix as one line -- both empty/
+    `None` together while `stretch_adjustments` is empty (gated, like every
+    other Stats section, behind `get_stats`'s own `STATS_MIN_SESSIONS`
+    check at the call site -- "never a partial page" applies here too)."""
+    rows = list(
+        await session.scalars(
+            select(StretchAdjustment).order_by(StretchAdjustment.created_at, StretchAdjustment.id)
+        )
+    )
+    if not rows:
+        return [], None
+
+    series = [
+        SeriesPointOut(date=row.created_at.date().isoformat(), value=row.d_after) for row in rows
+    ]
+    now_text = stretch.describe_mix(stretch.resolve(rows[-1].d_after))
+    return series, now_text
 
 
 async def _problem_words(

@@ -1,5 +1,10 @@
-.secondary-action {
-  margin-top: var(--sumi-space-3);
+// Same quiet, muted convention as the setup screen's own `.hint` -- this is
+// a one-line aside, not something that should compete with the headline
+// numbers above it.
+.stretch-note {
+  margin: 0;
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-sm);
 }
 
 sumi-card {

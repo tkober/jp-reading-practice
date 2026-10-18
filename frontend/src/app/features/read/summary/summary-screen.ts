@@ -1,5 +1,4 @@
 import { Component, computed, input, output } from '@angular/core';
-import { SumiButtonDirective } from 'sumi-ui/forms';
 import { SumiCard, SumiHanko, SumiPage } from 'sumi-ui/layout';
 import { SumiSessionGate, SumiSessionSummary, SumiSummaryTile } from 'sumi-ui/practice';
 import { SumiDataTable, type SumiTableColumn, type SumiTableRow } from 'sumi-ui/charts';
@@ -11,7 +10,6 @@ import type { LookedUpWord } from './summary.types';
   styleUrl: './summary-screen.scss',
   imports: [
     SumiPage,
-    SumiButtonDirective,
     SumiCard,
     SumiHanko,
     SumiSessionGate,
@@ -28,6 +26,10 @@ export class SummaryScreen {
   readonly questionsTotal = input.required<number>();
   readonly activeTimeMs = input.required<number>();
   readonly lookedUpWords = input<readonly LookedUpWord[]>([]);
+  /** "Stretch is now a little harder."/"...a little easier." (issue #13) --
+   *  `null` hides the line entirely (not a stretch session, an overridden
+   *  one, or "unchanged"). See `pages/read/stretch-note.ts`. */
+  readonly stretchNote = input<string | null>(null);
 
   readonly readAgain = output<void>();
   readonly newText = output<void>();

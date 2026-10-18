@@ -46,6 +46,19 @@
       <sumi-bar-chart ariaLabel="Reading speed by topic" [bars]="speedByTopic()" [table]="true" />
     </section>
 
+    @if (stretchNow(); as now) {
+      <section class="chart-section">
+        <h2>Stretch level</h2>
+        <sumi-line-chart
+          ariaLabel="Stretch's own difficulty over its adjustments"
+          [points]="stretchLevelSeries()"
+          [series]="[{ key: 'd', label: 'Difficulty' }]"
+          [table]="true"
+        />
+        <p class="hint">{{ now }}</p>
+      </section>
+    }
+
     @if (problemWords().length > 0) {
       <section class="chart-section">
         <h2>Problem words</h2>

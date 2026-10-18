@@ -332,6 +332,67 @@ async def test_stats_reading_level_none_yet(
     assert summary["reading_level_detail"] == "not enough sessions per level yet"
 
 
+# --- stats: Stretch level (issue #13) --------------------------------------
+
+
+async def test_stats_stretch_level_hidden_with_no_adjustments(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text = await _create_text(session)
+    for _ in range(3):
+        await _create_session(session, text)
+
+    response = await client.get("/api/stats")
+    body = response.json()
+    assert body["summary"] is not None  # three finished sessions
+    assert body["stretch_level_series"] == []
+    assert body["stretch_now"] is None
+
+
+async def test_stats_stretch_level_series_and_now(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    from app.db import StretchAdjustment
+
+    text = await _create_text(session)
+    rows = [await _create_session(session, text) for _ in range(3)]
+
+    session.add_all(
+        [
+            StretchAdjustment(
+                session_id=rows[0].id,
+                d_before=1.0,
+                d_after=1.1,
+                helps_per_100_words=2.0,
+                comprehension=90.0,
+                reason="harder",
+                created_at=NOW - timedelta(days=2),
+            ),
+            StretchAdjustment(
+                session_id=rows[1].id,
+                d_before=1.1,
+                d_after=1.2,
+                helps_per_100_words=2.5,
+                comprehension=85.0,
+                reason="harder",
+                created_at=NOW - timedelta(days=1),
+            ),
+        ]
+    )
+    await session.commit()
+
+    response = await client.get("/api/stats")
+    body = response.json()
+
+    assert body["stretch_level_series"] == [
+        {"date": (NOW - timedelta(days=2)).date().isoformat(), "value": pytest.approx(1.1)},
+        {"date": (NOW - timedelta(days=1)).date().isoformat(), "value": pytest.approx(1.2)},
+    ]
+    # d=1.2 is 20% of the way from anchor 1 (N5 50/N4 35/N3 15/N2 0, 5%) to
+    # anchor 2 (N5 30/N4 35/N3 25/N2 10, 10%): N5 46/N4 35/N3 17/N2 2, 6%.
+    assert body["stretch_now"] == "Now: N5 46 · N4 35 · N3 17 · N2 2 · 6 % unknown kanji"
+
+
 # --- stats: problem words -------------------------------------------------------
 
 

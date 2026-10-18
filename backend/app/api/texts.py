@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import presets
+from .. import presets, stretch, stretch_store
 from ..db import GeneratedText, Topic, get_session
 from ..generation import GenerationError, generate_text
 from ..models import (
@@ -46,23 +46,39 @@ async def _resolve_topic(session: AsyncSession, slug: str) -> Topic:
     return row
 
 
-def _resolve_targets(topic: Topic, payload: TextCreateRequest) -> TextTargets:
+async def _resolve_targets(
+    session: AsyncSession, topic: Topic, payload: TextCreateRequest
+) -> tuple[TextTargets, float | None]:
+    """`targets` plus, only for preset `stretch`, the difficulty `d` its own
+    (pre-override) numbers were resolved at -- `None` for `easy`/`challenge`,
+    whose numbers never move. `create_text` records both the resolved
+    targets and this `d` in the stored `texts.params` (issue #13 brief:
+    "The stored params records the resolved values and d.")."""
     preset = presets.get_preset(payload.preset)
     if preset is None:  # pragma: no cover - Literal already restricts this at the API boundary
         raise HTTPException(status_code=422, detail=f"Unknown preset {payload.preset!r}.")
+
+    stretch_d: float | None = None
+    preset_unknown_kanji_target = preset.unknown_kanji_target
+    preset_jlpt_mix: JlptMixTarget = preset.jlpt_mix
+    if payload.preset == "stretch":
+        stretch_d = await stretch_store.current_d(session)
+        mix = stretch.resolve(stretch_d)
+        preset_unknown_kanji_target = mix.unknown_kanji_target
+        preset_jlpt_mix = JlptMixTarget(**mix.jlpt_mix)
 
     overrides = payload.overrides
     style: TopicStyle = (overrides and overrides.style) or topic.default_style  # type: ignore[assignment]
     unknown_kanji_target = (
         overrides.unknown_kanji_target
         if overrides and overrides.unknown_kanji_target is not None
-        else preset.unknown_kanji_target
+        else preset_unknown_kanji_target
     )
     jlpt_mix: JlptMixTarget = (
-        overrides.jlpt_mix if overrides and overrides.jlpt_mix is not None else preset.jlpt_mix
+        overrides.jlpt_mix if overrides and overrides.jlpt_mix is not None else preset_jlpt_mix
     )
 
-    return TextTargets(
+    targets = TextTargets(
         topic_slug=topic.slug,
         length=payload.length,
         preset=payload.preset,
@@ -70,6 +86,7 @@ def _resolve_targets(topic: Topic, payload: TextCreateRequest) -> TextTargets:
         jlpt_mix=jlpt_mix,
         style=style,
     )
+    return targets, stretch_d
 
 
 def _text_out(row: GeneratedText) -> TextOut:
@@ -97,7 +114,7 @@ async def create_text(
     payload: TextCreateRequest, session: AsyncSession = Depends(get_session)
 ) -> TextOut:
     topic = await _resolve_topic(session, payload.topic_slug)
-    targets = _resolve_targets(topic, payload)
+    targets, stretch_d = await _resolve_targets(session, topic, payload)
     length_chars = presets.get_length(targets.length)
     assert length_chars is not None  # Literal already restricts this
 
@@ -117,9 +134,23 @@ async def create_text(
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
     usage: list[CallUsage] = outcome.calls
+    params = targets.model_dump()
+    # `overrides_used` (issue #13) is what `api/sessions.py`'s after-session
+    # Stretch rule checks before applying -- "only when ... no JLPT-mix/
+    # unknown-kanji overrides" (brief). Extra keys on this dict are simply
+    # ignored by `TextTargets.model_validate(row.params)` (`_text_out`
+    # below), so this never reaches the browser's `targets` shape.
+    params["overrides_used"] = {
+        "unknown_kanji_target": bool(
+            payload.overrides and payload.overrides.unknown_kanji_target is not None
+        ),
+        "jlpt_mix": bool(payload.overrides and payload.overrides.jlpt_mix is not None),
+    }
+    if stretch_d is not None:
+        params["stretch_d"] = stretch_d
     row = GeneratedText(
         topic_id=topic.id,
-        params=targets.model_dump(),
+        params=params,
         title=outcome.title,
         body=outcome.body,
         questions=[q.model_dump() for q in outcome.questions],
