@@ -760,6 +760,96 @@ only what each statistic *means*:
   lemma's own reading (never the surface's), meaning the first JMdict
   gloss, both resolved from the first `help_events` row seen for that
   lemma.
+- **Stretch level** (issue #13, below): `d_after` over every adjustment,
+  oldest first (`stretch_level_series`, a line chart, x = the adjustment's
+  own date), plus the current resolved mix as one line of text
+  (`stretch_now`, `stretch.describe_mix`). Both are `[]`/`null` together
+  while Stretch has never adjusted yet, hiding the whole section -- gated,
+  like every other Stats section, behind `get_stats`'s own
+  `STATS_MIN_SESSIONS` check (`api/stats.py`'s `_stretch_level_section`).
+
+### Stretch's adaptive difficulty (issue #13)
+
+Stretch is one number, `d` (`app/stretch.py`), interpolated between four
+anchor presets -- 0 (easy's own numbers), 1 (Stretch's pre-#13 static mix),
+2 (challenge's own numbers), 3 (a fourth, harder-still anchor Stretch's own
+adaptation only ever reaches *toward*):
+
+| d | unknown kanji | N5 | N4 | N3 | N2 | N1 |
+|---|---|---|---|---|---|---|
+| 0 (easy) | 2 % | 70 | 30 | 0 | 0 | 0 |
+| 1 (Stretch's start) | 5 % | 50 | 35 | 15 | 0 | 0 |
+| 2 (challenge) | 10 % | 30 | 35 | 25 | 10 | 0 |
+| 3 | 15 % | 15 | 30 | 30 | 20 | 5 |
+
+`easy`/`challenge` call `stretch.interpolate()` at exactly `d=0`/`d=2` (so
+their numbers match `presets.PRESETS` exactly, kept there unchanged as the
+static table every preset -- including Stretch's own pre-#13 default --
+still falls back to) -- only Stretch's own `d` ever moves. A mix in between
+two anchors is linear interpolation, JLPT shares rounded to a whole percent
+and always summing to exactly 100 (largest-remainder: each share's floor,
+then the largest fractional remainders get the leftover point(s), ties
+broken N5 before N4 before N3...); unknown kanji to one decimal percent.
+
+**Stretch's own `d`** starts at `D_START` (1.0), clamped to `[D_MIN, D_MAX]`
+= `[0.5, 2.5]`, stepping by `D_STEP` (0.1) per qualifying session. The rule
+(`stretch.decide_reason`, pure, unit-tested in `tests/test_stretch.py`),
+applied after a session finishes, only when its text was generated with
+preset `stretch` and *no* JLPT-mix/unknown-kanji overrides
+(`api/sessions.py`'s `_qualifies_for_stretch_adjustment`, reading the text's
+own `params["preset"]`/`params["overrides_used"]` -- see "Generation"
+below):
+
+- **harder** (`+D_STEP`): helps/100 words <= `HARDER_HELPS_MAX` (3) *and*
+  comprehension >= `HARDER_COMPREHENSION_MIN` (80%).
+- **easier** (`-D_STEP`): helps/100 words > `EASIER_HELPS_MIN` (8) *or*
+  comprehension < `EASIER_COMPREHENSION_MAX` (60%).
+- otherwise **unchanged** -- still its own row (see below), `d` untouched.
+
+**`stretch_adjustments`** (`db.py`, one Alembic revision, `0006`): `id`,
+`session_id` (unique FK, `ON DELETE CASCADE`), `d_before`, `d_after`,
+`helps_per_100_words`, `comprehension`, `reason`
+(`harder`/`easier`/`unchanged`), `created_at`. The unique `session_id` is
+the idempotency itself (`ON CONFLICT DO NOTHING`,
+`app/stretch_store.record_adjustment`, same convention `help_events` uses)
+-- inserted in the exact same transaction that flips a session to
+`finished` (the last answer, `api/sessions.py`'s `answer_question`).
+Stretch's *current* `d` is simply the latest row's `d_after`
+(`stretch_store.current_d`), else `D_START` when the table is empty.
+`app/stretch.py` is the pure maths (interpolation, the rule), `app/
+stretch_store.py` the only module touching the table, `api/sessions.py`/
+`api/texts.py`/`api/presets.py` the HTTP-layer glue -- same three-way split
+`stats_math.py`/`api/stats.py` already uses.
+
+**Generation.** `POST /api/texts` with preset `stretch` resolves its
+(pre-override) numbers at the *current* `d` (`api/texts.py`'s
+`_resolve_targets`, `stretch_store.current_d` -> `stretch.resolve`) --
+overrides still win per field, exactly as before #13. The stored
+`texts.params` records both the resolved `TextTargets` and, for a stretch
+text, the `d` they were resolved at (`"stretch_d"`) plus, for *every* text
+regardless of preset, which fields were overridden
+(`"overrides_used": {"unknown_kanji_target": bool, "jlpt_mix": bool}`) --
+extra keys `TextTargets.model_validate(row.params)` (`_text_out`) simply
+ignores, so neither ever reaches the browser's own `targets` shape. This is
+exactly what `_qualifies_for_stretch_adjustment` reads back.
+
+**`GET /api/presets`** (`api/presets.py`) -- the three presets' resolved
+values: `easy`/`challenge` straight from the static `presets.PRESETS`,
+`stretch` resolved at its current `d` (plus `d` itself and the last
+adjustment's own `reason`/`created_at`, `null` before the first one). The
+setup screen (`pages/read/read.ts`) reads this instead of its own
+hard-coded `setup.types.ts`'s `DIFFICULTY_PRESETS` table for the preset
+descriptions and the "Adjust" defaults, refreshing the *currently selected*
+preset's numbers once it loads (only for a field not already touched via
+"Adjust") -- `DIFFICULTY_PRESETS` stays as the offline fallback and the
+`/preview` fixtures' own data, exactly as the brief asked.
+
+**The summary's one quiet line** (`GET /api/sessions/{id}/summary`'s
+`stretch_adjustment`, `"harder"`/`"easier"`/`null` -- never `"unchanged"`,
+which still gets its own `stretch_adjustments` row but nothing worth
+reading about) becomes "Stretch is now a little harder."/"...a little
+easier." via `pages/read/stretch-note.ts`'s `stretchNoteText` (pure, unit
+tested), shown under the summary tiles (`SummaryScreen.stretchNote`).
 
 ## Sumi UI
 
@@ -855,7 +945,5 @@ HTTP 421.
   Explain grammar -- a candidate follow-up, deliberately left out of issue
   #10 because a long-press already peeks the reading on the phone, and a
   text-selection gesture would collide with it.
-- Stretch is a static preset, not yet adaptive to the learner's own progress
-  (issue #13).
 - No authentication. Single user, LAN only -- the same assumption the other
   stacks make.
