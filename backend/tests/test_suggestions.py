@@ -303,6 +303,27 @@ async def test_generate_suggestion_upstream_error_is_502() -> None:
                 valid_topic_slugs={"daily-life"},
             )
     assert excinfo.value.status == 502
+    # app.openai_errors -- the raw body never reaches the learner.
+    assert str(excinfo.value) == "OpenAI is having problems right now — try again in a moment."
+    assert "internal error" not in str(excinfo.value)
+
+
+async def test_generate_suggestion_rate_limited_is_readable() -> None:
+    state = _OpenAIState(
+        status_code=429,
+        error_detail="You exceeded your current quota, please check your plan and billing.",
+    )
+    async with _running_http(_build_openai_app(state), _free_port()) as openai_url:
+        with pytest.raises(GenerationError) as excinfo:
+            await suggestions.generate_suggestion(
+                config=_config(openai_api_base=openai_url),
+                context=_CONTEXT,
+                valid_topic_slugs={"daily-life"},
+            )
+    assert excinfo.value.status == 502
+    assert str(excinfo.value) == (
+        "OpenAI's rate limit or quota was reached — try again later or check your billing."
+    )
 
 
 # --- POST /api/suggestions ---------------------------------------------------

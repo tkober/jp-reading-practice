@@ -182,6 +182,28 @@ async def test_generate_help_answer_upstream_error_is_502() -> None:
         with pytest.raises(GenerationError) as excinfo:
             await assist.generate_help_answer(config=_config(openai_api_base=openai_url), prompt="x")
     assert excinfo.value.status == 502
+    # app.openai_errors -- the raw body never reaches the learner.
+    assert str(excinfo.value) == "OpenAI is having problems right now — try again in a moment."
+    assert "internal error" not in str(excinfo.value)
+
+
+async def test_generate_help_answer_no_key_error_names_settings() -> None:
+    with pytest.raises(GenerationError) as excinfo:
+        await assist.generate_help_answer(
+            config=_config(openai_api_base="http://127.0.0.1:1/v1", api_key=""), prompt="x"
+        )
+    assert excinfo.value.status == 409
+    assert str(excinfo.value) == "No OpenAI API key is configured."
+
+
+async def test_generate_help_answer_invalid_key_is_readable() -> None:
+    state = _OpenAIState(status_code=401, error_detail="Incorrect API key provided: sk-***XYZ.")
+    async with _running_http(_build_openai_app(state), _free_port()) as openai_url:
+        with pytest.raises(GenerationError) as excinfo:
+            await assist.generate_help_answer(config=_config(openai_api_base=openai_url), prompt="x")
+    assert excinfo.value.status == 502
+    assert str(excinfo.value) == "The OpenAI API key was rejected — check it in Settings."
+    assert "sk-***XYZ" not in str(excinfo.value)
 
 
 async def test_generate_help_answer_refusal_is_an_error() -> None:

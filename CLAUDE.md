@@ -1064,6 +1064,33 @@ name the current NHK URL and explain what adding a feed does. Settings'
 existing web-search toggle gets one more hint line: "Current events use web
 search instead of RSS feeds; adds the search cost to each text."
 
+### Readable OpenAI error messages
+
+Every OpenAI call (`generation.py`, `assist.py`, `suggestions.py`, and
+`news.py`'s web-search material path) turns an `httpx.HTTPStatusError`/
+`httpx.HTTPError` into a message via `app/openai_errors.py`'s
+`describe_openai_error()`, rather than formatting `exc.response.text`
+itself -- that raw body is a JSON blob meant for a developer, not a
+learner, and used to reach the browser verbatim through
+`GenerationError`'s message and the frontend's "The server refused:"
+prefix. The helper parses the body's `error.message`/`error.code`/
+`error.type` when present and maps the common cases to one plain English
+sentence each (401 -> bad key, 429/quota -> rate limit or billing, 5xx ->
+transient, `model_not_found` -> names the configured model, a timeout or
+connection error -> its own sentence); anything else falls back to the
+upstream's own `error.message` (never the raw body), prefixed
+"OpenAI returned an error:". The raw body is only ever `logger.warning`'d,
+tagged with a short `context` string naming the call site -- never
+returned. **Add a new OpenAI call site through this helper, not a new
+f-string.**
+
+The frontend's `core/api.ts` `rethrow()` shows a 409/502 `detail` as-is,
+with no "The server refused:" lead-in -- those two statuses are exactly
+what `GenerationError`'s own 409 (no key)/502 (upstream) convention uses,
+so `detail` there is already one of the helper's complete sentences (or
+one of the handful of other 409s, e.g. "no topics to suggest from", which
+read fine unprefixed too). Every other status keeps the lead-in.
+
 ## Sumi UI
 
 `frontend/sumi-ui` is a git submodule (`tkober/sumi-ui`, shared with the

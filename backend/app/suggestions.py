@@ -23,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 
 from .generation import GenerationError, _strict_schema
 from .models import JlptMixTarget, SuggestionOverridesOut
+from .openai_errors import describe_openai_error
 from .pricing import CallUsage, usage_from_response
 from .runtime_config import RuntimeConfig
 from .suggestion_prompts import SuggestionContext, build_suggestion_prompt
@@ -168,12 +169,11 @@ async def _post_chat_completion(api_base: str, api_key: str, payload: dict) -> d
             response.raise_for_status()
             return response.json()
     except httpx.HTTPStatusError as exc:
-        detail = exc.response.text[:500]
         raise GenerationError(
-            f"The OpenAI API returned HTTP {exc.response.status_code}: {detail}"
+            describe_openai_error(exc, context="suggestion", model=payload.get("model"))
         ) from exc
     except httpx.HTTPError as exc:
-        raise GenerationError(f"Could not reach the OpenAI API: {exc}") from exc
+        raise GenerationError(describe_openai_error(exc, context="suggestion")) from exc
 
 
 def _parse_completion(body: dict) -> tuple[SuggestionSchema, dict]:

@@ -286,13 +286,23 @@ export class Api {
  * Turn an HTTP failure into a sentence.
  *
  * The backend's `detail` names the cause precisely and is worth showing
- * verbatim, but on its own it reads like a stack trace, so it gets a lead-in.
+ * verbatim, but on its own it reads like a stack trace, so it gets a lead-in
+ * -- except for 409/502, where `detail` is already a complete, learner-
+ * facing sentence (the "no OpenAI key"/"wrong session phase" 409s, and
+ * every OpenAI-upstream 502 `app/openai_errors.py` formats): the word
+ * popover, the tutor chat, the "Suggest next text" card and the generation
+ * error screen show it as-is there, with no added lead-in to double up on.
+ *
+ * Exported for `api.spec.ts` -- otherwise only called from within this file.
  */
-function rethrow(error: unknown): never {
+export function rethrow(error: unknown): never {
   if (error instanceof HttpErrorResponse) {
     const detail = typeof error.error?.detail === 'string' ? error.error.detail : '';
     if (error.status === 0) {
       throw new ApiError('The server is not reachable.', error.status);
+    }
+    if (detail && (error.status === 409 || error.status === 502)) {
+      throw new ApiError(detail, error.status);
     }
     throw new ApiError(
       detail ? `The server refused: ${detail}` : `The server answered with ${error.status}.`,
