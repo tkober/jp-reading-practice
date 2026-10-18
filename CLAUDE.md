@@ -473,11 +473,9 @@ preview fixture (`preview/fixtures/word-lookup.fixture.ts`'s own
 `WORD_ACTIONS`) show them: **Explain word** (+2), **Translate sentence**
 (+3), **Explain grammar** (+3). Its fourth, **Ask tutor** (+3), is issue
 #11's own scope -- see "Tutor chat" below, it does not call `Api.assist()`
-at all. There is also no partial-sentence selection ("Teilsatz per
-Markieren") yet: on the phone a long press already peeks the reading, so a
-text-selection gesture would collide with it -- a candidate follow-up, not
-attempted here. "Translate sentence"/"Explain grammar" act on the sentence
-*containing* the tapped word, not the word itself.
+at all. "Translate sentence"/"Explain grammar" act on the sentence
+*containing* the tapped word, not the word itself -- for a learner-dragged
+*part* of it instead, see "Partial-sentence selection" below (issue #32).
 
 **`app/sentences.py`** is the one place that decides where a sentence
 ends: `split_sentences(paragraph_index, tokens)` takes `(token_id,
@@ -556,6 +554,105 @@ page-level error -- `ApiError`'s own message (already a full sentence,
 `core/api.ts`'s `rethrow()`) is shown verbatim. Opening a different word,
 or closing the popover, clears both the answer and any in-flight loading
 state.
+
+### Partial-sentence selection (issue #32)
+
+**Desktop only, by the owner's decision** (2026-10-18): a mouse drag
+across the running text, not the phone's two-tap range mode the issue's
+own proposal also considered -- a long press already peeks the reading on
+the phone (issue #9), and the owner decided to ship the desktop gesture
+alone for now rather than resolve that collision.
+
+**`sumi-reading-text` (`sumi-ui/practice`)** gained the gesture itself,
+opt-in via a new `rangeSelection` input (default `false`): a *mouse* drag
+(`PointerEvent.pointerType === 'mouse'`) across at least two non-plain
+words in one paragraph resolves to a `rangeSelected` event (`{ startId,
+endId, words, element }`) -- the native selection's start/end are each
+snapped inward to the nearest real word (a plain token at either edge
+cannot itself be `startId`/`endId`, only ride along inside `words`), then
+the native selection is cleared and the trailing `click` a drag's
+`mouseup` still triggers is suppressed, so it never also fires
+`wordActivated`. Anything short of that (inside one word, a drag crossing
+a paragraph) is left as an ordinary, copyable selection. A new
+`selectedRange` input (`{ startId, endId } | null`) then highlights every
+word in that span, seamlessly (same background as `--selected`, no
+per-word border, so adjacent words' backgrounds touch) including any
+plain token caught in between. Touch/pen never start it at all.
+
+**`ReadingScreen`** passes `rangeSelection=true` always and forwards
+`selectedRange` straight through; on `rangeSelected` it re-anchors the
+popover to the event's own `element` and emits the event up to
+`ReadSessionPage`. `pages/read/sentence-for-token.ts` gained
+`sameSentenceSpan(paragraphs, startId, endId)`, the same client-side
+mirror of the backend's own sentence splitter the existing `sentenceForToken`
+already is, so the page can tell a same-sentence span from a
+cross-sentence one *before* even trying `/assist`.
+
+**`ReadSessionPage.onRangeSelected`** opens the same `WordDetails` popover
+a word tap would (`selectedWord`, `kind: 'range'`): the span itself as the
+header (Japanese, no reading line, no dictionary/Kanji Trainer section at
+all -- a span has none of its own), and either `RANGE_ACTIONS` (same
+sentence) or just a note, "Select within one sentence.", and no actions
+(crosses one). The two popover kinds (word vs. range) are mutually
+exclusive -- opening either clears the other's own selection/highlight,
+and closing the popover clears `selectedRange` too (brief).
+
+**`RANGE_ACTIONS`** (`read-session.ts`): **Translate part** (+2),
+**Explain grammar** (+2), **Ask tutor** (+3) -- a span counts *less* than
+the whole sentence (the owner's decision, see below), while "Ask tutor"
+stays +3 either way (it is a question, span or not). The first two call
+`Api.assist()` with `end_token_id` set to the span's end (`token_id` stays
+its start); "Ask tutor" opens the chat panel with `focus_token_id` *and*
+`focus_end_token_id` set, rather than just the single-word focus issue
+#11 added.
+
+**`POST /api/sessions/{id}/assist`** gained two kinds, `translate_part`/
+`grammar_part`, taking the same body plus `end_token_id` (`AssistRequest`,
+`models.py`): `token_id` is the span's start. **Validated** (`app/
+sentences.py`'s `resolve_span`, shared with the chat's own span focus
+below): both tokens in the *same* sentence, start not after end, at least
+two *word* tokens in the inclusive span (a plain token caught between two
+real ones still counts towards the span's own *text*, never towards this
+minimum) -- else 422 with a clear message; an unresolvable `end_token_id`
+is a 404, same as the existing `token_id` check. **Target**
+(`sentences.span_target`): `"<sentence key>:<start token id>-<end token
+id>"`, e.g. `"0-1:0-3-0-7"` -- parsed back apart by `sentences.
+parse_span_target` (the three pieces have no hyphen of their own, so the
+split is unambiguous) wherever it is reused unparsed, see below. Cached in
+`help_answers` and deduped in `help_events` exactly like the three
+whole-sentence kinds -- the span target is just a longer string in the
+same `target` column, no schema change. **Weights** (`helps.py`):
+`TRANSLATE_PART_WEIGHT`/`GRAMMAR_PART_WEIGHT`, both 2. **Prompts**
+(`help_prompts.py`): `build_translate_part_instructions`/
+`build_explain_grammar_part_instructions` -- the same shape and word
+limits (60/120) as their whole-sentence counterparts, with the span
+itself as the thing to translate/explain and its sentence folded in as
+extra context on top of the whole text every builder already gives the
+model.
+
+**Tutor chat** (`ChatRequest`): a new `focus_end_token_id`, alongside the
+existing `focus_token_id`, turns the focus into that span rather than the
+whole sentence containing it -- validated by the same `resolve_span` (422/
+404 the same way), ignored entirely without `focus_token_id`. The prompt
+prefix becomes `"About this part of a sentence: <span> (in: <sentence>)"`
+(`help_prompts.focus_question_part`) instead of `"About this sentence:
+<sentence>"`. `ChatMessage.focus_sentence_key` stores the span *target*
+(`sentences.span_target`) rather than a plain sentence key for this case
+-- again no schema change, since nothing ever reads that column as
+anything but an opaque string outside `_answered_history`'s own replay,
+which tells the two shapes apart with `parse_span_target` and re-resolves
+the span's text from its two token ids (never stored redundantly, same
+spirit as a plain focus sentence's text never being stored either).
+Counted exactly like any other tutor question (`kind: "tutor"`, weight 3,
+`target: "chat:<user message id>"`, always unique) -- a span changes
+nothing about the counting, only the prompt.
+
+**Previews**: `/preview/reading-range` and `/preview/reading-range-answer`
+simulate a real mouse drag (`Selection`/`Range` + a dispatched
+`pointerup`) across two real words in `READING_TEXT`, so the resolution
+path exercised is the exact same one a learner's own drag would take --
+same convention the existing word/answer/peek preview variants already
+use.
 
 ### Backend: `reading_sessions` / `help_events` (issue #9)
 
@@ -1227,9 +1324,5 @@ HTTP 421.
 
 ## Known gaps
 
-- No partial-sentence selection ("Teilsatz per Markieren") for Translate/
-  Explain grammar -- a candidate follow-up, deliberately left out of issue
-  #10 because a long-press already peeks the reading on the phone, and a
-  text-selection gesture would collide with it.
 - No authentication. Single user, LAN only -- the same assumption the other
   stacks make.
