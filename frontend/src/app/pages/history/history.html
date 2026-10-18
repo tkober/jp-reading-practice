@@ -1,5 +1,29 @@
-<sumi-page title="History">
-  <sumi-empty-state title="No reading history yet" companion="fukurou">
-    Your reading history will show up here once you have read your first text.
-  </sumi-empty-state>
-</sumi-page>
+@if (failed()) {
+  <sumi-page title="History">
+    <sumi-error-state title="Can't reach the server" companion="fukurou" pattern="none">
+      Your reading history is safe either way.
+      <button sumiErrorAction type="button" sumiButton variant="secondary" (click)="reload()">
+        Try again
+      </button>
+    </sumi-error-state>
+  </sumi-page>
+} @else if (loading()) {
+  <sumi-page title="History">
+    <p>Loading…</p>
+  </sumi-page>
+} @else {
+  @if (loadError(); as error) {
+    <sumi-page title="History">
+      <sumi-banner tone="error">{{ error }}</sumi-banner>
+    </sumi-page>
+  } @else {
+    @if (exportError(); as error) {
+      <sumi-banner tone="error">{{ error }}</sumi-banner>
+    }
+    <app-history-screen
+      [sessions]="sessions()"
+      (openSession)="openSession($event)"
+      (exportRequested)="exportData()"
+    />
+  }
+}

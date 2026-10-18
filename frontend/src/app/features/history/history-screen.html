@@ -1,4 +1,14 @@
 <sumi-page title="History">
+  <button
+    sumiPageActions
+    type="button"
+    sumiButton
+    variant="secondary"
+    (click)="exportRequested.emit()"
+  >
+    Export JSON
+  </button>
+
   @if (sessions().length > 0) {
     <sumi-data-table
       [columns]="columns"

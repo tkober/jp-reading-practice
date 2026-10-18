@@ -32,7 +32,7 @@ from ..help_prompts import (
     build_tutor_messages,
     focus_question,
 )
-from ..helps import WEIGHTS
+from ..helps import WEIGHTS, helps_per_100_words as _helps_per_100_words
 from ..models import (
     AnswerRequest,
     AnswerResult,
@@ -658,9 +658,7 @@ async def get_summary(
         )
     )
     weight_sum = sum(h.weight for h in help_rows)
-    helps_per_100_words = (
-        round(weight_sum / metrics["words"] * 100, 1) if metrics["words"] else 0.0
-    )
+    helps_per_100_words = _helps_per_100_words(weight_sum, metrics["words"])
     # 0.0 for reading_peek/word_lookup (cost_usd is NULL) and for a cached
     # assist answer (cost_usd is 0.0) alike -- only an assist/chat this
     # session's own request actually generated adds anything (see

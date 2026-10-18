@@ -34,6 +34,9 @@ export class StatsScreen {
   readonly speedSeries = input<readonly SumiLinePoint[]>([]);
   readonly helpsSeries = input<readonly SumiLinePoint[]>([]);
   readonly speedByStyle = input<readonly SumiBar[]>([]);
+  /** Median 字/min per topic (issue #12), a second bar chart under "Speed
+   *  by style" -- same shape, grouped by topic instead. */
+  readonly speedByTopic = input<readonly SumiBar[]>([]);
   readonly problemWords = input<readonly ProblemWord[]>([]);
 
   protected readonly problemWordsColumns: readonly SumiTableColumn[] = [

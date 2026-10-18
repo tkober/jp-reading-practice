@@ -14,6 +14,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 15,
     scoreCorrect: 1,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's2',
@@ -25,6 +26,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 14,
     scoreCorrect: 2,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's3',
@@ -36,6 +38,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 13,
     scoreCorrect: 2,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's4',
@@ -47,6 +50,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 12,
     scoreCorrect: 3,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's5',
@@ -58,6 +62,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 12,
     scoreCorrect: 2,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's6',
@@ -69,6 +74,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 11,
     scoreCorrect: 2,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's7',
@@ -80,6 +86,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 10,
     scoreCorrect: 3,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's8',
@@ -91,6 +98,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 9,
     scoreCorrect: 2,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's9',
@@ -102,6 +110,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 9,
     scoreCorrect: 3,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's10',
@@ -113,6 +122,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 8,
     scoreCorrect: 2,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's11',
@@ -124,6 +134,7 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 7,
     scoreCorrect: 3,
     scoreTotal: 3,
+    finished: true,
   },
   {
     id: 's12',
@@ -135,5 +146,6 @@ export const HISTORY_SESSIONS: readonly HistorySession[] = [
     helpsPerHundred: 6,
     scoreCorrect: 3,
     scoreTotal: 3,
+    finished: true,
   },
 ];

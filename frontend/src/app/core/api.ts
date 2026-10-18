@@ -10,9 +10,11 @@ import type {
   ChatMessageApi,
   ChatPayload,
   ChatResultApi,
+  ExportApi,
   FinishReadingPayload,
   HelpPayload,
   HelpResultApi,
+  HistoryEntryApi,
   KanjiTrainerStatus,
   ModelCatalog,
   ReadingPaceApi,
@@ -22,6 +24,7 @@ import type {
   SessionTimePayload,
   Settings,
   SettingsPatch,
+  StatsApi,
   TextCreatePayload,
   TextOutApi,
   TopicApi,
@@ -232,6 +235,20 @@ export class Api {
 
   summary(id: number): Promise<SessionSummaryApi> {
     return this.get(`/api/sessions/${id}/summary`);
+  }
+
+  // --- History / Stats / Export (issue #12) ---------------------------------
+
+  history(): Promise<HistoryEntryApi[]> {
+    return this.get('/api/history');
+  }
+
+  stats(): Promise<StatsApi> {
+    return this.get('/api/stats');
+  }
+
+  export(): Promise<ExportApi> {
+    return this.get('/api/export');
   }
 
   // --- plumbing -------------------------------------------------------------

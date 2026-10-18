@@ -535,3 +535,169 @@ class ReadingPaceOut(BaseModel):
     #: How many finished sessions the median was actually computed from
     #: (0 when `source == "default"`).
     sessions: int
+
+
+# --- History / Stats (issue #12) ---------------------------------------------
+
+
+class HistoryEntryOut(BaseModel):
+    """One row of `GET /api/history`, oldest first (`api/stats.py` orders
+    the query that way) -- `features/history/history-screen.ts`'s own
+    `rows` computed reverses the list to show newest first, so the contract
+    here is "oldest first", not "display order".
+
+    `date` is the session's `started_at` day (not `finished_at`: an
+    unfinished session has no `finished_at` yet, and the date a session was
+    *started* is what a history list naturally sorts and groups by).
+    `finished` is `false` for a `reading`/`questions` session -- the four
+    fields below are then all `None` and the frontend shows "In progress"
+    instead of them (see `HistorySession.finished` on the frontend).
+    """
+
+    id: int
+    date: str
+    title: str
+    topic_name: str
+    length: Literal["short", "medium", "long"]
+    finished: bool
+    speed_chars_per_minute: int | None = None
+    helps_per_100_words: float | None = None
+    comprehension_correct: int | None = None
+    comprehension_total: int | None = None
+
+
+class StatsSummaryOut(BaseModel):
+    """Mirrors `stats_math.StatsSummaryResult` exactly -- see that module
+    for what each number means and which constants define it."""
+
+    speed_chars_per_minute: int
+    speed_delta_percent: float | None = None
+    helps_per_100_words: float
+    comprehension_percent: float
+    reading_level: str
+    reading_level_detail: str
+
+
+class SeriesPointOut(BaseModel):
+    """One point of the speed/helps trend charts -- `date` is an ISO day,
+    oldest point first (`stats_math.speed_series`/`helps_series`)."""
+
+    date: str
+    value: float
+
+
+class SpeedByGroupOut(BaseModel):
+    """One bar of "Speed by style"/"Speed by topic" -- `value` is that
+    group's median `chars_per_minute` (`stats_math.group_median_speed`)."""
+
+    label: str
+    value: float
+
+
+class ProblemWordOut(BaseModel):
+    """One row of the "Problem words" table -- `reading` is the lemma's own
+    reading (never the surface's, same convention as `Token.lemma_reading`),
+    `meaning` the first JMdict gloss, `times_looked_up` the distinct-text
+    count `stats_math.problem_word_counts` computed it from."""
+
+    word: str
+    reading: str
+    meaning: str
+    times_looked_up: int
+
+
+class StatsOut(BaseModel):
+    """`GET /api/stats`'s response. `summary` (and every list below) is
+    `None`/empty together, under `stats_math.STATS_MIN_SESSIONS` finished
+    sessions -- the frontend's existing empty state, nothing partial."""
+
+    summary: StatsSummaryOut | None = None
+    speed_series: list[SeriesPointOut] = Field(default_factory=list)
+    helps_series: list[SeriesPointOut] = Field(default_factory=list)
+    speed_by_style: list[SpeedByGroupOut] = Field(default_factory=list)
+    speed_by_topic: list[SpeedByGroupOut] = Field(default_factory=list)
+    problem_words: list[ProblemWordOut] = Field(default_factory=list)
+
+
+# --- Export (issue #12) -------------------------------------------------------
+
+
+class ExportTopicOut(BaseModel):
+    id: int
+    slug: str
+    title: str
+    glyph: str
+    prompt: str
+    default_style: str
+    feed_urls: list[str] = Field(default_factory=list)
+    is_builtin: bool
+    is_customized: bool
+
+
+class ExportTextOut(BaseModel):
+    """A full `texts` row, including `questions` with their `answer_index`
+    -- unlike `QuestionOut`/`TextOut`, an export is for the learner's own
+    data, not the browser's reading UI, so there is no reason to withhold
+    the answer here."""
+
+    id: int
+    topic_id: int | None = None
+    title: str
+    body: str
+    questions: list[dict]
+    params: dict
+    model: str
+    cost_usd: float | None = None
+    created_at: datetime
+
+
+class ExportSessionOut(BaseModel):
+    id: int
+    text_id: int
+    status: SessionStatus
+    started_at: datetime
+    reading_finished_at: datetime | None = None
+    finished_at: datetime | None = None
+    active_ms: int
+    paused_ms: int
+    answers: list[int | None]
+    comprehension_correct: int | None = None
+
+
+class ExportHelpEventOut(BaseModel):
+    id: int
+    session_id: int
+    kind: str
+    target: str
+    token_id: str
+    lemma: str
+    surface: str
+    weight: int
+    cost_usd: float | None = None
+    created_at: datetime
+
+
+class ExportChatMessageOut(BaseModel):
+    id: int
+    session_id: int
+    role: ChatRole
+    content: str
+    focus_sentence_key: str | None = None
+    model: str | None = None
+    cost_usd: float | None = None
+    created_at: datetime
+
+
+class ExportOut(BaseModel):
+    """`GET /api/export`'s response -- everything the learner has ever
+    generated or done, for `jp-reading-practice-<date>.json` (History page).
+    Flat lists, not nested: `ExportSessionOut.text_id`/`ExportHelpEventOut.
+    session_id`/`ExportChatMessageOut.session_id` are the only links between
+    them, same shape as the tables themselves."""
+
+    exported_at: datetime
+    topics: list[ExportTopicOut] = Field(default_factory=list)
+    texts: list[ExportTextOut] = Field(default_factory=list)
+    sessions: list[ExportSessionOut] = Field(default_factory=list)
+    help_events: list[ExportHelpEventOut] = Field(default_factory=list)
+    chat_messages: list[ExportChatMessageOut] = Field(default_factory=list)

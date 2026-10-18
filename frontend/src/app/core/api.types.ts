@@ -354,8 +354,9 @@ export interface SessionSummaryApi {
   looked_up_words: LookedUpWordApi[];
   /** Sum of this session's own assist (issue #10) *and* tutor-chat (issue
    *  #11) generation costs -- 0 for an assist cache hit (the chat never
-   *  caches). Not shown anywhere yet (History/Stats are still placeholders,
-   *  #12+); kept here so this type matches the backend. */
+   *  caches). Not shown anywhere yet -- History/Stats (issue #12) read
+   *  `GET /api/history`/`GET /api/stats` instead of this per-session
+   *  summary; kept here so this type matches the backend. */
   assists_cost_usd: number;
   /** Number of tutor-chat questions asked this session (issue #11). */
   chat_questions: number;
@@ -366,4 +367,83 @@ export interface ReadingPaceApi {
   chars_per_minute: number;
   source: 'default' | 'history';
   sessions: number;
+}
+
+// --- History / Stats / Export (issue #12) ------------------------------------
+
+/** Mirrors the backend's `HistoryEntryOut`, one row of `GET /api/history`,
+ *  oldest first (see that model's own docstring). `finished === false`
+ *  (a `reading`/`questions` session) means the four fields below are all
+ *  `null` -- `pages/history/history-mapping.ts`'s `toHistorySession` turns
+ *  this into the "In progress" row. */
+export interface HistoryEntryApi {
+  id: number;
+  date: string;
+  title: string;
+  topic_name: string;
+  length: 'short' | 'medium' | 'long';
+  finished: boolean;
+  speed_chars_per_minute: number | null;
+  helps_per_100_words: number | null;
+  comprehension_correct: number | null;
+  comprehension_total: number | null;
+}
+
+/** Mirrors the backend's `StatsSummaryOut` -- see `app.stats_math` for what
+ *  each number means and which constants define it. */
+export interface StatsSummaryApi {
+  speed_chars_per_minute: number;
+  speed_delta_percent: number | null;
+  helps_per_100_words: number;
+  comprehension_percent: number;
+  reading_level: string;
+  reading_level_detail: string;
+}
+
+/** Mirrors the backend's `SeriesPointOut`. */
+export interface SeriesPointApi {
+  date: string;
+  value: number;
+}
+
+/** Mirrors the backend's `SpeedByGroupOut`. */
+export interface SpeedByGroupApi {
+  label: string;
+  value: number;
+}
+
+/** Mirrors the backend's `ProblemWordOut`. */
+export interface ProblemWordApi {
+  word: string;
+  reading: string;
+  meaning: string;
+  times_looked_up: number;
+}
+
+/** Mirrors the backend's `StatsOut`, `GET /api/stats` -- `summary` (and
+ *  every list) is `null`/empty together under three finished sessions. */
+export interface StatsApi {
+  summary: StatsSummaryApi | null;
+  speed_series: SeriesPointApi[];
+  helps_series: SeriesPointApi[];
+  speed_by_style: SpeedByGroupApi[];
+  speed_by_topic: SpeedByGroupApi[];
+  problem_words: ProblemWordApi[];
+}
+
+/**
+ * `GET /api/export`'s response -- every row the learner has ever generated
+ * or done. Deliberately loose (`Record<string, unknown>` per row rather
+ * than mirroring every backend export model field by field): the frontend
+ * only ever serialises this straight back out to a downloaded `.json` file
+ * (`pages/history/history.ts`'s `exportData`), it never reads a field of
+ * its own, so a full mirror here would just be upkeep with no payoff.
+ */
+export interface ExportApi {
+  exported_at: string;
+  topics: Record<string, unknown>[];
+  texts: Record<string, unknown>[];
+  sessions: Record<string, unknown>[];
+  help_events: Record<string, unknown>[];
+  chat_messages: Record<string, unknown>[];
 }

@@ -27,14 +27,19 @@ function toIsoDate(label: string): string {
   return `2026-${String(month).padStart(2, '0')}-${day.padStart(2, '0')}`;
 }
 
+// Every `HISTORY_SESSIONS` fixture row is `finished: true` with real
+// numbers (see `history.fixture.ts`) -- the `!`s below just satisfy
+// `HistorySession`'s nullable fields (issue #12's "In progress" rows),
+// never actually hit on this fixture data.
+
 export const SPEED_SERIES: readonly SumiLinePoint[] = HISTORY_SESSIONS.map((session) => ({
   date: toIsoDate(session.date),
-  values: { speed: session.speedCharsPerMinute },
+  values: { speed: session.speedCharsPerMinute! },
 }));
 
 export const HELPS_SERIES: readonly SumiLinePoint[] = HISTORY_SESSIONS.map((session) => ({
   date: toIsoDate(session.date),
-  values: { helps: session.helpsPerHundred },
+  values: { helps: session.helpsPerHundred! },
 }));
 
 export const SPEED_BY_STYLE: readonly SumiBar[] = [
@@ -43,18 +48,29 @@ export const SPEED_BY_STYLE: readonly SumiBar[] = [
   { label: 'Formal', value: 127 },
 ];
 
-const totalCorrect = HISTORY_SESSIONS.reduce((sum, s) => sum + s.scoreCorrect, 0);
-const totalQuestions = HISTORY_SESSIONS.reduce((sum, s) => sum + s.scoreTotal, 0);
+export const SPEED_BY_TOPIC: readonly SumiBar[] = [
+  { label: 'Culture', value: 141 },
+  { label: 'Current events', value: 143 },
+  { label: 'Daily life', value: 135 },
+  { label: 'History', value: 121 },
+  { label: 'Science', value: 140 },
+  { label: 'Short story', value: 146 },
+  { label: 'Travel', value: 137 },
+];
+
+const totalCorrect = HISTORY_SESSIONS.reduce((sum, s) => sum + s.scoreCorrect!, 0);
+const totalQuestions = HISTORY_SESSIONS.reduce((sum, s) => sum + s.scoreTotal!, 0);
 const latest = HISTORY_SESSIONS[HISTORY_SESSIONS.length - 1];
 const monthAgo = HISTORY_SESSIONS[3];
 
 export const STATS_SUMMARY: StatsSummary = {
-  speedCharsPerMinute: latest.speedCharsPerMinute,
+  speedCharsPerMinute: latest.speedCharsPerMinute!,
   speedDeltaPercent: Math.round(
-    ((latest.speedCharsPerMinute - monthAgo.speedCharsPerMinute) / monthAgo.speedCharsPerMinute) *
+    ((latest.speedCharsPerMinute! - monthAgo.speedCharsPerMinute!) /
+      monthAgo.speedCharsPerMinute!) *
       100,
   ),
-  helpsPerHundred: latest.helpsPerHundred,
+  helpsPerHundred: latest.helpsPerHundred!,
   comprehensionPercent: Math.round((totalCorrect / totalQuestions) * 100),
   readingLevel: 'N4',
   readingLevelDetail: 'comfortable · N3 with help',
@@ -64,6 +80,11 @@ export const PROBLEM_WORDS: readonly ProblemWord[] = [
   { word: '伺う', reading: 'うかがう', meaning: 'to visit / to ask (humble)', timesLookedUp: 4 },
   { word: '兼六園', reading: 'けんろくえん', meaning: 'Kenrokuen (garden)', timesLookedUp: 3 },
   { word: '概要', reading: 'がいよう', meaning: 'outline / summary', timesLookedUp: 3 },
-  { word: '承知しました', reading: 'しょうちしました', meaning: 'understood (polite)', timesLookedUp: 2 },
+  {
+    word: '承知しました',
+    reading: 'しょうちしました',
+    meaning: 'understood (polite)',
+    timesLookedUp: 2,
+  },
   { word: '治部煮', reading: 'じぶに', meaning: 'jibuni (a Kanazawa dish)', timesLookedUp: 2 },
 ];
