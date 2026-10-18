@@ -255,6 +255,50 @@ their own, so counting one would always show up as an unknowable "unknown
 kanji"). `jlpt_mix` is the share of content words at each level, 5..1 plus
 `unlisted`, summing to 1 unless there are no content words at all.
 
+**Compound particles (複合助詞)** (`app/analysis.py`'s `_mark_compound_particles`,
+run once per paragraph right after `tokenize_paragraph`, before `_build_token`):
+unidic splits these into their parts, so the verb inside would otherwise count
+as a content word -- について tokenises as に/つい(lemma つく)/て, and that つく
+would get its own JLPT level, count toward `words`/`jlpt_mix`, and be tappable.
+The fixed sequences folded into grammar (`is_word = False`, same as an ordinary
+particle -- no JLPT, no word count, no peek) are: について/につき (つく),
+に対して/に対し/に対する (対する), によって/により (よる), として/とし/とする
+(する), にとって (とる), に関して/関し/関する (関する), において (おく),
+をめぐって/めぐり/めぐる (めぐる), に基づいて/基づき/基づく (基づく), に向け
+て/向け/向ける (向ける), とともに/と共に, に従って/従い/従う (従う) -- both
+the renyoukei-alone connective (bare in formal/news register: に対し、,
+をめぐり議論 -- common in real NHK text) and the rentaikei form modifying a
+following noun directly (に対する対応, をめぐる議論) are included, since both
+are the same particle structurally, not just the て-form. における is not
+handled (おける conjugates through an extra classical auxiliary, り, rather
+than simply dropping て) and neither is んにつきまして's super-polite につき
+ます(して) -- both fall through unmarked, a known, documented gap.
+
+Matched by the verb's own `lemma` (`orthBase`, never unidic's own `lemma`
+feature -- see `_base_form`), which is what tells a grammaticalised use apart
+from a same-reading content verb: 着く/就く/置く/巡る (kanji) never collide
+with つく/おく/めぐる (kana) the way 撮る/取る already don't (see above). Two
+pairs share a lemma with no kanji/kana split at all and need an extra guard:
+つく also covers the literal "stick to" sense (手についた, never without a
+following て) and the lexicalised ついてくる/いく (犬が私についてきた, not
+folded into について -- a plain verb continuing the clause instead, 犬が私
+について歩いた, is *not* caught, another documented gap); とる also covers
+literal "take" chained onto a benefactive/aspectual auxiliary (友人にとって
+もらった, 母にとっておいた). として has its own guard against と's other job,
+the quotative/volitional "〜(よ)うとした" ("tried to"), which always has a verb
+(not a noun) right before と. A bare renyoukei/rentaikei match is also rejected
+when the next token is a 助動詞 completing that verb's *own* finite predicate
+(対した, とした, 向けた are complete sentences, not に対して/として/に向けて
+with the connector dropped).
+
+Stored texts keep whatever analysis was computed for them at generation time
+-- this only changes what a *newly* generated or re-analysed text looks like.
+Measured against real text (NHK News Web RSS, all 8 category feeds, 1,202
+titles+descriptions, ~41,500 tokens): 404 tokens (1.6% of what `words` counted
+before) move from content word to grammar, affecting 295 of the 1,202 texts
+(24.5%). Every pattern above fired at least once; the most common were とし/
+として (90), つく's family (84), よる (69), and めぐる's family (54).
+
 **Dictionary** (`app/dictionary.py`, `app/data/jmdict.sqlite`): JMdict
 (EDRDG, CC BY-SA 4.0 -- see `app/data/LICENSES.md`), looked up by lemma +
 reading for the word popover's part of speech and first three English
