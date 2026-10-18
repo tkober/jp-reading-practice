@@ -337,7 +337,10 @@ async def test_web_search_upstream_error_falls_back_with_usage_still_none() -> N
         result, usage = await news.fetch_web_search_material(config, "Current events")
 
     assert result.items == []
-    assert result.error is not None
+    # app.openai_errors (brief: "Make jp-reading-practice's OpenAI error
+    # messages readable") -- the raw body ("boom") never reaches the
+    # learner, a plain English sentence does instead.
+    assert result.error == "OpenAI is having problems right now — try again in a moment."
     assert usage is None
 
 

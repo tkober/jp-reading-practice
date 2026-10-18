@@ -21,6 +21,7 @@ from __future__ import annotations
 import httpx
 
 from .generation import GenerationError
+from .openai_errors import describe_openai_error
 from .pricing import CallUsage, usage_from_response
 from .runtime_config import RuntimeConfig
 
@@ -41,12 +42,9 @@ async def _post_chat_completion(
             response.raise_for_status()
             return response.json()
     except httpx.HTTPStatusError as exc:
-        detail = exc.response.text[:500]
-        raise GenerationError(
-            f"The OpenAI API returned HTTP {exc.response.status_code}: {detail}"
-        ) from exc
+        raise GenerationError(describe_openai_error(exc, context="assist", model=model)) from exc
     except httpx.HTTPError as exc:
-        raise GenerationError(f"Could not reach the OpenAI API: {exc}") from exc
+        raise GenerationError(describe_openai_error(exc, context="assist")) from exc
 
 
 def _parse_completion(body: dict) -> tuple[str, dict]:

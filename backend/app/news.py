@@ -32,6 +32,7 @@ from email.utils import parsedate_to_datetime
 import httpx
 from defusedxml import ElementTree as ET
 
+from .openai_errors import describe_openai_error
 from .pricing import CallUsage
 from .runtime_config import RuntimeConfig
 
@@ -402,12 +403,20 @@ async def fetch_web_search_material(
             ) from exc
         return (
             MaterialResult(
-                items=[], error=f"The web search call returned HTTP {exc.response.status_code}: {detail}"
+                items=[],
+                error=describe_openai_error(
+                    exc, context="web search material", model=config.generation_model
+                ),
             ),
             None,
         )
     except httpx.HTTPError as exc:
-        return MaterialResult(items=[], error=f"Could not reach the OpenAI API for web search: {exc}"), None
+        return (
+            MaterialResult(
+                items=[], error=describe_openai_error(exc, context="web search material")
+            ),
+            None,
+        )
 
     usage = _usage_from_responses(body)
     text = _extract_output_text(body)

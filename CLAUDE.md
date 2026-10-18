@@ -82,7 +82,9 @@ the model in `db.py`, then `cd backend && uv run alembic revision
 --autogenerate -m "..."` and hand-check the result. `env.py` runs either on
 the owner connection `init_db` already opened
 (`config.attributes["connection"]`, inside its transaction) or, from the CLI,
-on an engine it builds itself from the owner URL;
+on an engine it builds itself from the owner URL (only then does it load
+`alembic.ini`'s logging config -- in-process it would mute the app's own
+loggers);
 `target_metadata = Base.metadata` is what makes `--autogenerate` and the
 `compare_metadata` guard in `tests/test_migrations.py` possible -- a model
 change that ships without a matching revision fails that test.
@@ -1063,6 +1065,33 @@ news-backed simply by having at least one feed URL; its placeholder/hint
 name the current NHK URL and explain what adding a feed does. Settings'
 existing web-search toggle gets one more hint line: "Current events use web
 search instead of RSS feeds; adds the search cost to each text."
+
+### Readable OpenAI error messages
+
+Every OpenAI call (`generation.py`, `assist.py`, `suggestions.py`, and
+`news.py`'s web-search material path) turns an `httpx.HTTPStatusError`/
+`httpx.HTTPError` into a message via `app/openai_errors.py`'s
+`describe_openai_error()`, rather than formatting `exc.response.text`
+itself -- that raw body is a JSON blob meant for a developer, not a
+learner, and used to reach the browser verbatim through
+`GenerationError`'s message and the frontend's "The server refused:"
+prefix. The helper parses the body's `error.message`/`error.code`/
+`error.type` when present and maps the common cases to one plain English
+sentence each (401 -> bad key, 429/quota -> rate limit or billing, 5xx ->
+transient, `model_not_found` -> names the configured model, a timeout or
+connection error -> its own sentence); anything else falls back to the
+upstream's own `error.message` (never the raw body), prefixed
+"OpenAI returned an error:". The raw body is only ever `logger.warning`'d,
+tagged with a short `context` string naming the call site -- never
+returned. **Add a new OpenAI call site through this helper, not a new
+f-string.**
+
+The frontend's `core/api.ts` `rethrow()` shows a 409/502 `detail` as-is,
+with no "The server refused:" lead-in -- those two statuses are exactly
+what `GenerationError`'s own 409 (no key)/502 (upstream) convention uses,
+so `detail` there is already one of the helper's complete sentences (or
+one of the handful of other 409s, e.g. "no topics to suggest from", which
+read fine unprefixed too). Every other status keeps the lead-in.
 
 ## Sumi UI
 

@@ -25,6 +25,7 @@ from . import news
 from .analysis import analyze, collect_lemmas
 from .known_set import KnownSet, fetch_known_set
 from .models import JlptMixTarget, Metrics, QuestionOut, TextAnalysis
+from .openai_errors import describe_openai_error
 from .pricing import CallUsage, usage_from_response, web_search_cost_usd
 from .prompts import MaterialItem, build_correction_instructions, build_generation_instructions
 from .runtime_config import RuntimeConfig
@@ -205,12 +206,11 @@ async def _post_chat_completion(api_base: str, api_key: str, payload: dict) -> d
             response.raise_for_status()
             return response.json()
     except httpx.HTTPStatusError as exc:
-        detail = exc.response.text[:500]
         raise GenerationError(
-            f"The OpenAI API returned HTTP {exc.response.status_code}: {detail}"
+            describe_openai_error(exc, context="text generation", model=payload.get("model"))
         ) from exc
     except httpx.HTTPError as exc:
-        raise GenerationError(f"Could not reach the OpenAI API: {exc}") from exc
+        raise GenerationError(describe_openai_error(exc, context="text generation")) from exc
 
 
 def _parse_completion(body: dict) -> tuple[GeneratedTextSchema, dict]:

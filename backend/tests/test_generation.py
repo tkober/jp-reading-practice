@@ -299,6 +299,11 @@ async def test_upstream_openai_error_is_a_502() -> None:
                     unknown_kanji_target=0.9,
                 )
     assert excinfo.value.status == 502
+    # app.openai_errors (brief: "Make jp-reading-practice's OpenAI error
+    # messages readable") -- the raw body ("internal error") never reaches
+    # the learner, a plain English sentence does instead.
+    assert str(excinfo.value) == "OpenAI is having problems right now — try again in a moment."
+    assert "internal error" not in str(excinfo.value)
 
 
 async def test_kanji_trainer_down_still_generates_without_the_known_list() -> None:
