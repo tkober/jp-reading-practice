@@ -32,7 +32,7 @@ from app.known_set import KnownSet
 from app.models import JlptMixTarget, SuggestionOverridesOut
 from app.pricing import CallUsage
 from app.runtime_config import RuntimeConfig
-from app.suggestion_prompts import SuggestionContext, TopicInfo
+from app.suggestion_prompts import SuggestionContext, TopicInfo, time_of_day_label
 from tests.test_kanji_trainer import _free_port
 
 # --- pure clamping / normalising --------------------------------------------
@@ -502,3 +502,32 @@ async def test_text_without_a_suggestion_id_is_unaffected(
         "/api/texts", json={"topic_slug": "daily-life", "length": "short", "preset": "easy"}
     )
     assert response.status_code == 201
+
+
+async def test_the_browsers_local_hour_sets_the_time_of_day(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api import suggestions as suggestions_api
+
+    seen: list[str] = []
+
+    async def fake_generate_suggestion(*, config, context, valid_topic_slugs):
+        seen.append(context.time_of_day)
+        return suggestions.SuggestionResult(
+            topic_slug="daily-life",
+            length="short",  # type: ignore[arg-type]
+            preset="easy",  # type: ignore[arg-type]
+            overrides=None,
+            reason="r",
+            usage=CallUsage(prompt_tokens=1, completion_tokens=1, cached_tokens=0),
+            model="gpt-4o-mini",
+        )
+
+    monkeypatch.setattr(suggestions_api, "generate_suggestion", fake_generate_suggestion)
+
+    response = await client.post("/api/suggestions", json={"local_hour": 21})
+    assert response.status_code == 201
+    assert seen == [time_of_day_label(21)]
+
+    bad = await client.post("/api/suggestions", json={"local_hour": 25})
+    assert bad.status_code == 422

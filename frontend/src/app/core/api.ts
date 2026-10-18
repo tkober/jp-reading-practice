@@ -256,7 +256,9 @@ export class Api {
    * `createText()`'s own `suggestion_id` can mark it used later.
    */
   suggestNext(): Promise<SuggestionApi> {
-    return firstValueFrom(this.http.post<SuggestionApi>('/api/suggestions', {})).catch(rethrow);
+    return firstValueFrom(
+      this.http.post<SuggestionApi>('/api/suggestions', { local_hour: new Date().getHours() }),
+    ).catch(rethrow);
   }
 
   // --- History / Stats / Export (issue #12) ---------------------------------

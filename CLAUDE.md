@@ -883,9 +883,9 @@ behind its own `STATS_MIN_SESSIONS` the same way `GET /api/stats` is);
 Stretch's current resolved mix and `d` (`stretch_store.current_d` ->
 `stretch.resolve`); days since the last session of any status (`None` for
 "never read before"); and a one-word time of day
-(`suggestion_prompts.time_of_day_label`, local server hour -- a rough
-signal, not tied to the learner's own time zone, same spirit as the other
-"single user, LAN only" simplifications in "Known gaps").
+(`suggestion_prompts.time_of_day_label`) from the browser's own hour
+(`POST /api/suggestions {local_hour}`; the server's clock is usually UTC in
+its container), falling back to the server hour when none is sent.
 
 **The prompt's rules** (`suggestion_prompts._RULES`): vary topics -- avoid
 both of the last two read, unless the learner keeps choosing the same one

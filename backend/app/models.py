@@ -723,6 +723,13 @@ class SuggestionOverridesOut(BaseModel):
     jlpt_mix: JlptMixTarget | None = None
 
 
+class SuggestionRequest(BaseModel):
+    """`POST /api/suggestions`'s optional body: the learner's local hour
+    (0-23), for the time of day in the suggestion's context."""
+
+    local_hour: int | None = Field(default=None, ge=0, le=23)
+
+
 class SuggestionOut(BaseModel):
     """`POST /api/suggestions`'s response. `overrides` is `null` whenever
     the suggestion preferred a plain preset (the common case, per the

@@ -15,7 +15,7 @@ from .. import stats_math, stretch, stretch_store
 from ..db import GeneratedText, HelpEvent, ReadingSession, Suggestion, Topic, get_session
 from ..generation import GenerationError
 from ..helps import helps_per_100_words
-from ..models import SuggestionOut
+from ..models import SuggestionOut, SuggestionRequest
 from ..pricing import cost_usd
 from ..runtime_config import load_runtime_config
 from ..suggestion_prompts import (
@@ -98,7 +98,7 @@ def _to_recent_session_info(
     )
 
 
-async def _build_context(session: AsyncSession) -> SuggestionContext:
+async def _build_context(session: AsyncSession, local_hour: int | None = None) -> SuggestionContext:
     topic_rows = list(await session.scalars(select(Topic).order_by(Topic.sort_order, Topic.title)))
     topics = [
         TopicInfo(
@@ -180,7 +180,9 @@ async def _build_context(session: AsyncSession) -> SuggestionContext:
         stats=stats,
         stretch=stretch_values,
         days_since_last_session=days_since_last_session,
-        time_of_day=time_of_day_label(datetime.now().hour),
+        # The browser's own hour when it sent one: the server's clock is
+        # usually UTC in its container, not the learner's time of day.
+        time_of_day=time_of_day_label(datetime.now().hour if local_hour is None else local_hour),
     )
 
 
@@ -195,13 +197,15 @@ def _suggestion_payload(result: SuggestionResult) -> dict[str, object]:
 
 
 @router.post("", response_model=SuggestionOut, status_code=201)
-async def create_suggestion(session: AsyncSession = Depends(get_session)) -> SuggestionOut:
+async def create_suggestion(
+    payload: SuggestionRequest | None = None, session: AsyncSession = Depends(get_session)
+) -> SuggestionOut:
     topic_rows = list(await session.scalars(select(Topic)))
     valid_slugs = {row.slug for row in topic_rows}
     if not valid_slugs:
         raise HTTPException(status_code=409, detail="No topics are set up to suggest from.")
 
-    context = await _build_context(session)
+    context = await _build_context(session, payload.local_hour if payload else None)
     config = await load_runtime_config(session)
 
     try:
