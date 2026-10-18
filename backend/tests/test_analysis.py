@@ -4,6 +4,8 @@ larger test file, `test_furigana.py`)."""
 
 from __future__ import annotations
 
+import pytest
+
 from app import kanji_trainer as kt
 from app.analysis import analyze, collect_lemmas, lookup_candidates
 from app.furigana import tokenize_paragraph
@@ -158,6 +160,154 @@ def test_kana_only_word_never_needs_furigana() -> None:
 
     [token] = result.paragraphs[0].tokens
     assert token.needs_furigana is False
+
+
+# --- compound particles (複合助詞) -----------------------------------------
+# unidic splits these into their parts, so the verb inside would otherwise
+# count as a content word on its own (について -> に/つい(つく)/て). See
+# CLAUDE.md "Text analysis" for the full list and the false positives below.
+
+
+def _token(text: str, surface: str) -> object:
+    result = analyze(text, KnownSet(), {})
+    tokens = result.paragraphs[0].tokens
+    return next(t for t in tokens if t.surface == surface)
+
+
+@pytest.mark.parametrize(
+    ("text", "body_surface"),
+    [
+        ("日本の経済について話した。", "つい"),
+        ("この件につき連絡します。", "つき"),
+        ("この問題に対して検討する。", "対し"),
+        ("この問題に対し、検討する。", "対し"),
+        ("彼の努力によって成功した。", "よっ"),
+        ("調査結果により判明した。", "より"),
+        ("学生として勉強する。", "し"),
+        ("委員長とし、会議を進めた。", "し"),
+        ("先生にとって大切なことだ。", "とっ"),
+        ("環境問題に関して議論した。", "関し"),
+        ("環境問題に関し、議論が続く。", "関し"),
+        ("東京において開催された。", "おい"),
+        ("領土をめぐって対立した。", "めぐっ"),
+        ("問題をめぐり議論が続いた。", "めぐり"),
+        ("規則に基づいて行動する。", "基づい"),
+        ("規則に基づき、行動する。", "基づき"),
+        ("未来に向けて進む。", "向け"),
+        ("将来に向け、準備を進める。", "向け"),
+        ("家族とともに過ごす。", "とも"),
+        ("家族と共に暮らす。", "共"),
+        ("指示に従って動く。", "従っ"),
+        ("指示に従い、動いた。", "従い"),
+    ],
+)
+def test_compound_particle_verb_becomes_grammar(text: str, body_surface: str) -> None:
+    token = _token(text, body_surface)
+    assert token.is_word is False
+
+
+@pytest.mark.parametrize(
+    ("text", "body_surface"),
+    [
+        # について vs 着く/就く (arrive/take up a post -- different lemma)
+        ("日本に着いて嬉しい。", "着い"),
+        ("新しい地位に就いて喜んだ。", "就い"),
+        # につき/について vs the literal "stick to" sense -- same lemma
+        # (つく), but never on its own (手についた) or with a continuing
+        # motion verb instead of a new clause (犬が私についてきた/
+        # 彼のあとをついていった, the lexicalised ついてくる/いく)
+        ("インクが手についた。", "つい"),
+        ("犬が私についてきた。", "つい"),
+        ("彼のあとをついていった。", "つい"),
+        # について vs the literal "place" sense (置く, different lemma from
+        # classical おく) -- 置く also keeps its own で-form "~ておく" aux
+        # out of the picture, since that never follows に directly
+        ("箱に置いて出かけた。", "置い"),
+        ("テーブルに置いておいた。", "置い"),
+        # 席に着く -- not even followed by て, nowhere close to a match
+        ("席に着く。", "着く"),
+        # によって vs 寄る ("stop by" -- different lemma from 因る/依る)
+        ("店に寄ってパンを買った。", "寄っ"),
+        # にとって vs the literal "take" sense -- same lemma (とる), but
+        # chained onto a benefactive/aspectual auxiliary instead of
+        # introducing a new clause (友人にとってもらった, 母にとっておいた)
+        ("手に取って見る。", "取っ"),
+        ("友人にとってもらった写真を見せた。", "とっ"),
+        ("母にとっておいたケーキを食べた。", "とっ"),
+        # として vs the quotative/volitional "〜(よ)うとした" ("tried to"),
+        # which always has a verb (not a noun/pronoun) right before と
+        ("彼は逃げようとして失敗した。", "し"),
+        ("本を読もうとしたが時間がなかった。", "し"),
+        # bare 連用形 as that verb's OWN finite predicate (対した, とした,
+        # 向けた are complete sentences), not a compound-particle connector
+        ("彼はその困難に対した。", "対し"),
+        ("彼を委員長とした。", "し"),
+        ("彼は顔を声に向けた。", "向け"),
+        # をめぐって vs the literal "go around" sense (巡る, different
+        # lemma from めぐる)
+        ("地球を巡って衛星が動く。", "巡っ"),
+        # とともに vs とも meaning "friend" -- a real word, but never
+        # directly preceded by its own と the way the grammaticalised use
+        # always is (二人とも and それとも don't even reach this check:
+        # unidic splits their と+も into two separate particle tokens, not
+        # a 名詞 とも, so there is no body token to match against at all)
+        ("彼は私のともだ。", "とも"),
+    ],
+)
+def test_compound_particle_false_positive_pairs_stay_words(text: str, body_surface: str) -> None:
+    token = _token(text, body_surface)
+    assert token.is_word is True
+
+
+def test_compound_particle_tokens_keep_their_boundaries() -> None:
+    """is_word goes to False, but について is still three separate tokens
+    (に/つい/て) -- the reading text renders tokens, and the frontend maps
+    is_word=false to plain text, so merging would lose nothing it needs but
+    would complicate every other lookup for no reason."""
+    result = analyze("経済について話した。", KnownSet(), {})
+
+    surfaces = [t.surface for t in result.paragraphs[0].tokens]
+    assert surfaces == ["経済", "に", "つい", "て", "話し", "た", "。"]
+
+
+def test_compound_particle_kanji_still_counts_and_gets_furigana() -> None:
+    """対 is on the page either way -- について's own verb still contributes
+    to the unknown-kanji share and still needs furigana when unknown, even
+    though it is grammar now, not a vocabulary word (issue's point 1)."""
+    known = KnownSet()  # 対 unknown
+    result = analyze("この問題に対して検討する。", known, {})
+
+    token = next(t for t in result.paragraphs[0].tokens if t.surface == "対し")
+    assert token.is_word is False
+    assert [k.character for k in token.kanji] == ["対"]
+    assert token.kanji[0].known is False
+    assert token.needs_furigana is True  # 対 unknown -> needs furigana regardless of is_word
+
+    assert result.metrics.kanji_total == 5  # 問,題,対,検,討
+    assert result.metrics.kanji_unknown == 5
+
+
+def test_compound_particle_has_no_jlpt_even_when_the_lookup_has_one() -> None:
+    """対する would otherwise be N2 vocabulary -- as grammar it must not
+    carry a word-level JLPT at all, matching "no JLPT" in the issue."""
+    known = KnownSet()
+    jlpt_lookup = {("対する", "たいする"): _jlpt("対する", "たいする", 2, {"対": 2})}
+
+    result = analyze("この問題に対して検討する。", known, jlpt_lookup)
+
+    token = next(t for t in result.paragraphs[0].tokens if t.surface == "対し")
+    assert token.jlpt is None
+
+
+def test_compound_particle_does_not_count_toward_words_or_jlpt_mix() -> None:
+    known = KnownSet()
+    jlpt_lookup = {("問題", "もんだい"): _jlpt("問題", "もんだい", 4, {"問": 4, "題": 4})}
+
+    result = analyze("この問題に対して検討する。", known, jlpt_lookup)
+
+    # content words: この(連体詞), 問題, 検討, する -- not に/対し/て
+    assert result.metrics.words == 4
+    assert result.metrics.jlpt_mix.n4 == pytest.approx(1 / 4)
 
 
 # --- collect_lemmas ---------------------------------------------------------

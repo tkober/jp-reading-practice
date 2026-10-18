@@ -11,6 +11,7 @@ this module's own tokenizer output, then calls `analyze()` with the results.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from . import kanji_trainer as kt
 from .furigana import (
@@ -123,13 +124,23 @@ def _build_token(
     # する, ある, ない, くれる, できる, こと -- see `furigana._base_form`),
     # so `kanji_chars` is empty there and the question does not arise.
     primary_result = jlpt_lookup.get(_jlpt_key(*candidates[0]))
-    word_jlpt = primary_result.jlpt if primary_result is not None else None
-    if word_jlpt is None:
-        for lemma, reading in candidates[1:]:
-            fallback_result = jlpt_lookup.get(_jlpt_key(lemma, reading))
-            if fallback_result is not None and fallback_result.jlpt is not None:
-                word_jlpt = fallback_result.jlpt
-                break
+
+    # Only a word (`is_word`) has a JLPT level of its own: a particle never
+    # did, and neither does a verb that `_mark_compound_particles` has just
+    # folded into a fixed grammaticalised particle (について, に対して, ...
+    # -- see CLAUDE.md "Text analysis") -- its kanji still get a per-
+    # character level below (`kanji_info`, unrelated to `token.jlpt`, and
+    # still wanted for the furigana rule and the unknown-kanji share), but
+    # the token itself is grammar now, not a vocabulary item with a level.
+    word_jlpt: int | None = None
+    if raw.is_word:
+        word_jlpt = primary_result.jlpt if primary_result is not None else None
+        if word_jlpt is None:
+            for lemma, reading in candidates[1:]:
+                fallback_result = jlpt_lookup.get(_jlpt_key(lemma, reading))
+                if fallback_result is not None and fallback_result.jlpt is not None:
+                    word_jlpt = fallback_result.jlpt
+                    break
 
     kanji_jlpt: dict[str, int | None] = {}
     if primary_result is not None:
@@ -169,6 +180,185 @@ def _build_token(
         needs_furigana=needs_furigana,
         is_word=raw.is_word,
     )
+
+
+@dataclass(frozen=True)
+class _CompoundParticlePattern:
+    """One of the fixed 複合助詞 (compound particle) sequences documented in
+    CLAUDE.md "Text analysis" -- a case particle followed by a verb's
+    connective form, matched by that verb's own `lemma` (unidic's
+    `orthBase`, never its `lemma` feature -- see `furigana._base_form`) so
+    a grammaticalised use is told apart from an unrelated content verb that
+    merely shares a reading: によって's よる is never confused with 寄る
+    ("stop by"), and において's おく must stay the classical (kana) "に於く"
+    and never 置く ("to place", kanji) -- see `tokenize_paragraph`'s own
+    orthBase handling, which already keeps those apart the same way it
+    keeps 着く/就く apart from つく (handled separately below,
+    `_tsuku_span`, since its kana/kanji split alone is not enough -- see
+    that function's docstring).
+    """
+
+    particle: str
+    lemma: str
+    #: True when the particle's own bare 連用形 (対し, とり, とし, おき, ...)
+    #: is never the grammaticalised use on its own -- にとって and におい
+    #: て are always complete with て; the others (に対して/対し, によって/
+    #: により, として/とし, に関して/関し, をめぐって/めぐり, に基づいて/
+    #: 基づき, に向けて/向け, に従って/従い) also show up in formal/news
+    #: register without it (NHK headlines favour the bare form), and a
+    #: bare match is excluded instead by `_bare_form_is_finite`.
+    requires_te: bool
+    #: Lemmas that, found right after a *consumed* て/で, mean this was a
+    #: literal verb + auxiliary chain rather than the particle -- 友人に
+    #: とってもらった (literal とる, "take", + the benefactive もらう) and
+    #: 母にとっておいた (+ おく) read identically to にとって up to that
+    #: point; see `_tsuku_span` for について's own version of this
+    #: (犬が私についてきた/ていった -- the lexicalised ついてくる/いく).
+    aux_after_te: frozenset[str] = frozenset()
+    #: として only: と's *other* common job is the quotative/volitional
+    #: "〜(よ)うとした/として" ("tried to ..."), which always has a verb
+    #: right before と (逃げようとして) where として has a noun/pronoun/
+    #: suffix instead (学生として, 委員長として) -- see `_compound_span`.
+    forbid_preceding_verb: bool = False
+
+
+_COMPOUND_PATTERNS: dict[tuple[str, str], _CompoundParticlePattern] = {
+    (p.particle, p.lemma): p
+    for p in (
+        _CompoundParticlePattern("に", "対する", requires_te=False),
+        _CompoundParticlePattern("に", "よる", requires_te=False),
+        _CompoundParticlePattern("と", "する", requires_te=False, forbid_preceding_verb=True),
+        _CompoundParticlePattern(
+            "に", "とる", requires_te=True,
+            aux_after_te=frozenset({"もらう", "くれる", "あげる", "やる", "おく", "しまう"}),
+        ),
+        _CompoundParticlePattern("に", "関する", requires_te=False),
+        _CompoundParticlePattern("に", "おく", requires_te=True),
+        _CompoundParticlePattern("を", "めぐる", requires_te=False),
+        _CompoundParticlePattern("に", "基づく", requires_te=False),
+        _CompoundParticlePattern("に", "向ける", requires_te=False),
+        _CompoundParticlePattern("に", "従う", requires_te=False),
+    )
+}  # fmt: skip
+
+_TE_SURFACES = ("て", "で")
+_TSUKU_AUX_AFTER_TE = frozenset({"くる", "いく"})
+
+
+def _consumes_te(tokens: list[RawToken], index: int) -> bool:
+    return 0 <= index < len(tokens) and tokens[index].pos == "助詞" and tokens[index].surface in _TE_SURFACES
+
+
+def _bare_form_is_finite(tokens: list[RawToken], index: int) -> bool:
+    """True when `tokens[index]` exists and is a 助動詞 (た/だ/ます/ない/...)
+    completing the *previous* token's own conjugation, rather than a comma,
+    a particle, a new clause, or the paragraph ending -- the signal that a
+    bare 連用形 (対し, とし, 向け, ...) is that verb's own finite predicate
+    (対した, とした, 向けた are complete sentences on their own) and not a
+    compound-particle connector introducing a separate one (対し、, とし、,
+    向け、...). Checked only for the patterns above whose `requires_te` is
+    False -- a verb that already took て/で is unambiguously non-finite."""
+    return 0 <= index < len(tokens) and tokens[index].pos == "助動詞"
+
+
+def _tsuku_span(tokens: list[RawToken], index: int) -> int | None:
+    """について/につき: つく's kana/kanji orthBase split (`tokenize_paragraph`)
+    already keeps the grammaticalised use apart from 着く ("arrive"),
+    就く ("take up a post") and 置く ("place") -- but kana つく alone still
+    covers three different things: について/につき themselves, the literal
+    "stick to" sense with no connecting て at all (手についた, インクが手に
+    ついた), and the lexicalised "follow along" compound verbs ついてくる/
+    ついていく (犬が私についてきた, 彼のあとをついていった). The first of
+    those is excluded by requiring て whenever the surface is the onbin
+    stem つい (unlike につき's bare 連用形 つき, つい never stands on its
+    own); the third by refusing one when the token right after て is くる/
+    いく. A plain verb continuing a coordinated clause right after について
+    (犬が私について歩いた, "walked, following me") is not caught by this --
+    see CLAUDE.md and the report for that acknowledged gap."""
+    body = tokens[index + 1]
+    if body.surface == "つき":
+        return None if _bare_form_is_finite(tokens, index + 2) else 2
+    if body.surface == "つい" and _consumes_te(tokens, index + 2):
+        if index + 3 < len(tokens) and tokens[index + 3].lemma in _TSUKU_AUX_AFTER_TE:
+            return None
+        return 3
+    return None
+
+
+def _tomoni_span(tokens: list[RawToken], index: int) -> int | None:
+    """とともに/と共に: と + とも/共 (名詞, lemma とも or 共 -- 共に written
+    with the kanji tokenises the same way, see CLAUDE.md) + に. Unlike the
+    other patterns the body is not a verb at all, so this never overlaps
+    with `_COMPOUND_PATTERNS`. The leading と is what keeps this apart from
+    とも used as "friend" (友とともだちと -- never directly preceded by its
+    own と) or as the concessive/contrastive とも (貧しくとも, それとも,
+    二人とも -- each already its own single 助詞 token, or split ど+も,
+    never a 名詞 preceded by と)."""
+    particle, body = tokens[index], tokens[index + 1]
+    if (
+        particle.surface == "と"
+        and body.pos == "名詞"
+        and body.lemma in ("とも", "共")
+        and index + 2 < len(tokens)
+        and tokens[index + 2].pos == "助詞"
+        and tokens[index + 2].surface == "に"
+    ):
+        return 3
+    return None
+
+
+def _compound_span(tokens: list[RawToken], index: int) -> int | None:
+    """How many tokens starting at `index` form one fixed compound particle
+    (2 or 3), or None when none of them start here -- see
+    `_mark_compound_particles`."""
+    particle, body = tokens[index], tokens[index + 1]
+    if particle.surface == "に" and body.lemma == "つく" and body.pos == "動詞":
+        return _tsuku_span(tokens, index)
+    if body.pos != "動詞":
+        return _tomoni_span(tokens, index)
+
+    pattern = _COMPOUND_PATTERNS.get((particle.surface, body.lemma))
+    if pattern is None:
+        return None
+    if pattern.forbid_preceding_verb and index > 0 and tokens[index - 1].pos == "動詞":
+        return None
+
+    if _consumes_te(tokens, index + 2):
+        if index + 3 < len(tokens) and tokens[index + 3].lemma in pattern.aux_after_te:
+            return None
+        return 3
+    if pattern.requires_te or _bare_form_is_finite(tokens, index + 2):
+        return None
+    return 2
+
+
+def _mark_compound_particles(tokens: list[RawToken]) -> None:
+    """Fold every fixed 複合助詞 sequence in `tokens` into grammar, in
+    place: について, に対して/対し, によって/により, として/とし, にとって,
+    に関して/関し, において, につき, をめぐって/めぐり, に基づいて/基づき,
+    に向けて/向け, とともに/と共に, に従って/従い -- see CLAUDE.md "Text
+    analysis" for the full rule and the false positives it is tested
+    against. Runs once per paragraph, straight after `tokenize_paragraph`,
+    before `_build_token` turns any of it into a `Token` -- a token marked
+    `is_word = False` here is indistinguishable downstream from an ordinary
+    particle: no JLPT (`_build_token`), no word count, no JLPT mix
+    (`_compute_metrics`/`_jlpt_mix`, both keyed on `is_word`), no peek (the
+    frontend). Its kanji keep counting toward the unknown-kanji share and
+    keep getting furigana when unknown regardless -- `_build_token` reads
+    those straight off `raw.lemma`/`raw.surface`, never off `is_word`.
+    """
+    index = 0
+    while index < len(tokens):
+        if tokens[index].pos != "助詞" or index + 1 >= len(tokens):
+            index += 1
+            continue
+        span = _compound_span(tokens, index)
+        if span is None:
+            index += 1
+            continue
+        for token in tokens[index : index + span]:
+            token.is_word = False
+        index += span
 
 
 def _jlpt_mix(content_tokens: list[Token]) -> JlptMix:
@@ -223,9 +413,11 @@ def analyze(
     """
     paragraphs: list[Paragraph] = []
     for paragraph_index, paragraph_text in enumerate(split_paragraphs(text)):
+        raw_tokens = tokenize_paragraph(paragraph_text)
+        _mark_compound_particles(raw_tokens)
         tokens = [
             _build_token(f"{paragraph_index}-{token_index}", raw, known, jlpt_lookup)
-            for token_index, raw in enumerate(tokenize_paragraph(paragraph_text))
+            for token_index, raw in enumerate(raw_tokens)
         ]
         paragraphs.append(Paragraph(tokens=tokens))
 
