@@ -16,14 +16,22 @@ import statistics
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import dictionary
+from .. import dictionary, stretch, stretch_store
 from .. import kanji_trainer as kt
 from ..assist import generate_chat_answer, generate_help_answer
-from ..db import ChatMessage, GeneratedText, HelpAnswer, HelpEvent, ReadingSession, get_session
+from ..db import (
+    ChatMessage,
+    GeneratedText,
+    HelpAnswer,
+    HelpEvent,
+    ReadingSession,
+    StretchAdjustment,
+    get_session,
+)
 from ..generation import GenerationError
 from ..help_prompts import (
     build_explain_grammar_instructions,
@@ -607,6 +615,53 @@ async def finish_reading(
     return _session_out(row, text_row)
 
 
+def _qualifies_for_stretch_adjustment(text_row: GeneratedText) -> bool:
+    """Issue #13's brief: only a session whose text was generated with
+    preset `stretch` and *no* JLPT-mix/unknown-kanji overrides -- both
+    flags come from `api/texts.py`'s own `params["overrides_used"]`,
+    absent (`.get(..., {})`) for any text generated before issue #13, which
+    reads the same as "no overrides" (correctly: those rows predate
+    overrides even being tracked here, but *did* always use the then-static
+    preset untouched)."""
+    params = text_row.params
+    if params.get("preset") != "stretch":
+        return False
+    overrides_used = params.get("overrides_used") or {}
+    return not overrides_used.get("unknown_kanji_target") and not overrides_used.get("jlpt_mix")
+
+
+async def _apply_stretch_adjustment(
+    session: AsyncSession, row: ReadingSession, text_row: GeneratedText, questions: list[dict]
+) -> None:
+    """Runs the rule and records one `stretch_adjustments` row, in the same
+    transaction `answer_question` commits once it returns -- idempotent per
+    session (`stretch_store.record_adjustment`'s own `ON CONFLICT DO
+    NOTHING`), so a caller that somehow ran this twice for the same session
+    would simply no-op the second time."""
+    metrics = text_row.analysis["metrics"]
+    weight_sum = await session.scalar(
+        select(func.sum(HelpEvent.weight)).where(HelpEvent.session_id == row.id)
+    )
+    helps = _helps_per_100_words(weight_sum or 0, metrics["words"])
+    comprehension = (
+        round((row.comprehension_correct or 0) / len(questions) * 100, 1) if questions else 0.0
+    )
+
+    d_before = await stretch_store.current_d(session)
+    result = stretch.adjust(
+        d_before, helps_per_100_words=helps, comprehension_percent=comprehension
+    )
+    await stretch_store.record_adjustment(
+        session,
+        reading_session_id=row.id,
+        d_before=result.d_before,
+        d_after=result.d_after,
+        helps_per_100_words=helps,
+        comprehension=comprehension,
+        reason=result.reason,
+    )
+
+
 @router.post("/{session_id}/answers", response_model=AnswerResult)
 async def answer_question(
     session_id: int, payload: AnswerRequest, session: AsyncSession = Depends(get_session)
@@ -632,6 +687,12 @@ async def answer_question(
         row.comprehension_correct = sum(
             1 for i in range(len(questions)) if answers[i] == questions[i]["answer_index"]
         )
+
+        # Issue #13: nudge Stretch's own difficulty, in this same
+        # transaction -- see `_qualifies_for_stretch_adjustment`'s
+        # docstring for exactly which sessions this applies to.
+        if _qualifies_for_stretch_adjustment(text_row):
+            await _apply_stretch_adjustment(session, row, text_row, questions)
 
     await session.commit()
     return AnswerResult(correct=payload.option_index == correct_index, correct_index=correct_index)
@@ -685,6 +746,16 @@ async def get_summary(
         meaning = entry.glosses[0] if entry and entry.glosses else ""
         looked_up_words.append(LookedUpWordOut(word=help_row.lemma, reading=reading, meaning=meaning))
 
+    # Issue #13: the summary's one quiet line, only when this session
+    # actually moved Stretch -- never for "unchanged" (still its own row in
+    # `stretch_adjustments`, just nothing the learner needs reading about).
+    stretch_row = await session.scalar(
+        select(StretchAdjustment).where(StretchAdjustment.session_id == session_id)
+    )
+    stretch_adjustment = (
+        stretch_row.reason if stretch_row is not None and stretch_row.reason != "unchanged" else None
+    )
+
     return SessionSummaryOut(
         chars_per_minute=chars_per_minute,
         words_per_minute=words_per_minute,
@@ -695,6 +766,7 @@ async def get_summary(
         looked_up_words=looked_up_words,
         assists_cost_usd=assists_cost_usd,
         chat_questions=chat_questions,
+        stretch_adjustment=stretch_adjustment,  # type: ignore[arg-type]
     )
 
 
