@@ -105,7 +105,11 @@ def _material_section(
 Base the text on exactly ONE of the following real, current news items --
 a graded-reader retelling, simplified to the level below. Add no facts
 beyond what the item itself says, and no speculation about anything the
-item does not state. Set `source_index` to that item's number below.
+item does not state. An item is often only a few sentences: reach the
+length with general background a learner would find useful (what the
+place, institution or custom is, why events like this happen), written
+clearly as general knowledge -- never new specifics such as numbers, names,
+quotes or outcomes. Set `source_index` to that item's number below.
 
 {lines}"""
     if material_error:

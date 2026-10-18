@@ -2,7 +2,11 @@
   <sumi-banner tone="notice">{{ note }}</sumi-banner>
 }
 @if (materialErrorNote(); as note) {
-  <sumi-banner tone="notice">{{ note }}</sumi-banner>
+  <!-- Say what it means for this text first; the technical reason follows. -->
+  <sumi-banner tone="notice"
+    >No current news could be loaded, so this is an invented everyday news piece.
+    {{ note }}</sumi-banner
+  >
 }
 
 <sumi-session-gate

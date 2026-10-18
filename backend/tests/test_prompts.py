@@ -119,6 +119,9 @@ def test_material_section_lists_the_items_without_their_urls() -> None:
     assert "2026-10-17" in text
     assert "新しい図書館" in text
     assert "source_index" in text
+    # A short item may be padded with general background, never new specifics.
+    assert "general background" in text
+    assert "never new specifics" in text
     # The brief: title/summary/date only, never the URL -- there is none on
     # `MaterialItem` to leak in the first place.
 
