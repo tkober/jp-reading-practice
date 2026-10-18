@@ -23,6 +23,7 @@ dependencies = [
     # Topics ship as Markdown + YAML front matter, same as
     # jp-conversation-practice's scenarios (scenario_files.py).
     "python-frontmatter>=1.1.0",
+    "defusedxml>=0.7.1",
 ]
 
 [dependency-groups]

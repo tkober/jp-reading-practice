@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import threading
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -426,10 +427,38 @@ async def test_migration_0004_backfills_target_from_lemma(session: AsyncSession)
     finally:
         await owner_engine.dispose()
 
-    text_row = await _create_text(session)
+    # Insert the text itself the old way too, via raw SQL rather than the
+    # current `GeneratedText` ORM model: the schema is downgraded to 0003
+    # here, which predates every column a later revision added to `texts`
+    # (issue #15's `source`/`material_error`, revision 0007, is simply the
+    # first of those) -- the ORM model always maps *every* column it knows
+    # about, so inserting through it would reach for a column that does not
+    # exist yet at this revision.
+    text_row_id = (
+        await session.execute(
+            sa_text(
+                "INSERT INTO texts (params, title, body, questions, analysis, known_snapshot, "
+                "model, usage, attempts) VALUES "
+                "(CAST(:params AS jsonb), :title, :body, CAST(:questions AS jsonb), "
+                "CAST(:analysis AS jsonb), CAST(:known_snapshot AS jsonb), :model, "
+                "CAST('[]' AS jsonb), 1) RETURNING id"
+            ),
+            {
+                "params": json.dumps({"topic_slug": "daily-life", "length": "short", "preset": "easy"}),
+                "title": "水曜日",
+                "body": BODY,
+                "questions": json.dumps(QUESTIONS),
+                "analysis": json.dumps(analyze(BODY, KnownSet(), {}).model_dump(mode="json")),
+                "known_snapshot": json.dumps(
+                    {"level": None, "known_kanji_count": 0, "known_vocabulary_count": 0, "kanji_trainer_error": None}
+                ),
+                "model": "gpt-4o-mini",
+            },
+        )
+    ).scalar_one()
     session_row = await session.execute(
         sa_text("INSERT INTO reading_sessions (text_id) VALUES (:tid) RETURNING id"),
-        {"tid": text_row.id},
+        {"tid": text_row_id},
     )
     session_id = session_row.scalar_one()
     await session.execute(

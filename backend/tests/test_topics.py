@@ -77,6 +77,50 @@ async def test_reseeding_keeps_a_customized_topics_wording(session: AsyncSession
     assert refreshed.title == "My history"
 
 
+# --- feed_urls (issue #15) ----------------------------------------------------
+
+
+async def test_current_events_is_seeded_with_its_feed_url(session: AsyncSession) -> None:
+    row = (await session.scalars(select(Topic).where(Topic.slug == "current-events"))).one()
+    assert row.feed_urls == ["https://www.nhk.or.jp/rss/news/cat0.xml"]
+
+
+async def test_reseeding_updates_an_untouched_built_ins_feed_url(session: AsyncSession) -> None:
+    row = (await session.scalars(select(Topic).where(Topic.slug == "current-events"))).one()
+    await session.execute(
+        Topic.__table__.update()
+        .where(Topic.id == row.id)
+        .values(feed_urls=["https://www3.nhk.or.jp/rss/news/cat0.xml"])  # the old, frozen URL
+    )
+    await session.commit()
+
+    await seed_topics(session)
+    await session.commit()
+
+    async with get_sessionmaker()() as fresh:
+        refreshed = await fresh.get(Topic, row.id)
+    assert refreshed is not None
+    assert refreshed.feed_urls == ["https://www.nhk.or.jp/rss/news/cat0.xml"]
+
+
+async def test_reseeding_keeps_a_customized_topics_feed_url(session: AsyncSession) -> None:
+    row = (await session.scalars(select(Topic).where(Topic.slug == "current-events"))).one()
+    await session.execute(
+        Topic.__table__.update()
+        .where(Topic.id == row.id)
+        .values(feed_urls=["https://example.test/my-own-feed.xml"], is_customized=True)
+    )
+    await session.commit()
+
+    await seed_topics(session)
+    await session.commit()
+
+    async with get_sessionmaker()() as fresh:
+        refreshed = await fresh.get(Topic, row.id)
+    assert refreshed is not None
+    assert refreshed.feed_urls == ["https://example.test/my-own-feed.xml"]
+
+
 # --- API ----------------------------------------------------------------------
 
 

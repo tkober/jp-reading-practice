@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns="http://purl.org/rss/1.0/"
+>
+  <channel rdf:about="https://example.test/rdf/">
+    <title>Fixture News (RDF / RSS 1.0)</title>
+    <link>https://example.test/rdf/</link>
+    <description>A fixture mirroring Asahi/Jiji's own RDF shape.</description>
+    <dc:date>{channel_date}</dc:date>
+  </channel>
+  <item rdf:about="https://example.test/rdf/weather">
+    <title>天気予報：週末は晴れ</title>
+    <link>https://example.test/rdf/weather</link>
+    <description>週末は全国的に晴れる見込みです。</description>
+    <dc:date>{fresh_item_date}</dc:date>
+  </item>
+  <item rdf:about="https://example.test/rdf/old">
+    <title>古いニュース</title>
+    <link>https://example.test/rdf/old</link>
+    <description>これは古いニュースです。</description>
+    <dc:date>{stale_item_date}</dc:date>
+  </item>
+</rdf:RDF>

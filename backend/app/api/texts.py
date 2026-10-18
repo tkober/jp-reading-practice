@@ -22,6 +22,7 @@ from ..models import (
     QuestionOut,
     TextCreateRequest,
     TextOut,
+    TextSourceOut,
     TextTargets,
     TopicStyle,
 )
@@ -106,6 +107,8 @@ def _text_out(row: GeneratedText) -> TextOut:
         model=row.model,
         cost_usd=row.cost_usd,
         kanji_trainer_error=row.known_snapshot.get("kanji_trainer_error"),
+        source=TextSourceOut.model_validate(row.source) if row.source else None,
+        material_error=row.material_error,
     )
 
 
@@ -125,6 +128,8 @@ async def create_text(
             config=config,
             kanji_trainer_url=config.kanji_trainer_mcp_url,
             topic_prompt=topic.prompt,
+            topic_title=topic.title,
+            feed_urls=list(topic.feed_urls or []),
             style=targets.style,
             length_chars=length_chars,
             jlpt_mix=targets.jlpt_mix,
@@ -134,6 +139,12 @@ async def create_text(
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
     usage: list[CallUsage] = outcome.calls
+    # The `web_search` tool's own flat per-call fee (issue #15) rides on top
+    # of the token cost above -- `None` wins (same "unknown model says
+    # unknown, never a guessed partial number" rule `pricing.cost_usd`
+    # already follows) rather than reporting only the flat fee alone.
+    base_cost = cost_usd(outcome.model, usage)
+    total_cost = None if base_cost is None else base_cost + outcome.extra_cost_usd
     params = targets.model_dump()
     # `overrides_used` (issue #13) is what `api/sessions.py`'s after-session
     # Stretch rule checks before applying -- "only when ... no JLPT-mix/
@@ -158,8 +169,10 @@ async def create_text(
         known_snapshot=outcome.known_snapshot,
         model=outcome.model,
         usage=[call.as_dict() for call in usage],
-        cost_usd=cost_usd(outcome.model, usage),
+        cost_usd=total_cost,
         attempts=outcome.attempts,
+        source=outcome.source,
+        material_error=outcome.material_error,
     )
     session.add(row)
     await session.commit()
