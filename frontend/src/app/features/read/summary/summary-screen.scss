@@ -7,6 +7,16 @@
   font-size: var(--sumi-text-sm);
 }
 
+.source-line {
+  margin: 0;
+  color: var(--sumi-text-2);
+  font-size: var(--sumi-text-sm);
+
+  a {
+    color: inherit;
+  }
+}
+
 sumi-card {
   display: block;
   margin-top: var(--sumi-space-5);

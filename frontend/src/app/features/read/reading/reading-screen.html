@@ -46,6 +46,11 @@
             (wordActivated)="onWordActivate($event)"
             (readingPeeked)="readingPeeked.emit($event)"
           />
+          @if (text().source; as source) {
+            <p class="source-line">
+              <a [href]="source.link" target="_blank" rel="noopener">{{ source.label }}</a>
+            </p>
+          }
         </div>
 
         @if (paused()) {

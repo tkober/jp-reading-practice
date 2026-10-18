@@ -199,6 +199,15 @@ export interface ApiTextTargets {
   style: TopicStyleApi;
 }
 
+/** Mirrors the backend's `TextSourceOut` -- the one material item a
+ *  news-backed topic's text retold (issue #15). */
+export interface TextSourceApi {
+  title: string;
+  link: string;
+  published: string | null;
+  via: 'rss' | 'web_search';
+}
+
 /** Mirrors the backend's `TextOut` -- `POST /api/texts`/`GET /api/texts/{id}`. */
 export interface TextOutApi {
   id: number;
@@ -211,6 +220,8 @@ export interface TextOutApi {
   model: string;
   cost_usd: number | null;
   kanji_trainer_error: string | null;
+  source: TextSourceApi | null;
+  material_error: string | null;
 }
 
 // --- Reading sessions (issue #9) --------------------------------------------

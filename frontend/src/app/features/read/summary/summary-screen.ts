@@ -2,7 +2,7 @@ import { Component, computed, input, output } from '@angular/core';
 import { SumiCard, SumiHanko, SumiPage } from 'sumi-ui/layout';
 import { SumiSessionGate, SumiSessionSummary, SumiSummaryTile } from 'sumi-ui/practice';
 import { SumiDataTable, type SumiTableColumn, type SumiTableRow } from 'sumi-ui/charts';
-import type { LookedUpWord } from './summary.types';
+import type { LookedUpWord, SourceLine } from './summary.types';
 
 @Component({
   selector: 'app-summary-screen',
@@ -30,6 +30,9 @@ export class SummaryScreen {
    *  `null` hides the line entirely (not a stretch session, an overridden
    *  one, or "unchanged"). See `pages/read/stretch-note.ts`. */
   readonly stretchNote = input<string | null>(null);
+  /** "Source: <title> ↗" (issue #15) -- same line the reading screen shows
+   *  under the text, repeated here; `null` for a text with no source. */
+  readonly source = input<SourceLine | null>(null);
 
   readonly readAgain = output<void>();
   readonly newText = output<void>();

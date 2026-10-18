@@ -1,6 +1,9 @@
 @if (kanjiTrainerErrorNote(); as note) {
   <sumi-banner tone="notice">{{ note }}</sumi-banner>
 }
+@if (materialErrorNote(); as note) {
+  <sumi-banner tone="notice">{{ note }}</sumi-banner>
+}
 
 <sumi-session-gate
   [title]="titleJapanese()"
