@@ -23,6 +23,11 @@
       @if (stretchNote(); as note) {
         <p sumiSummaryDetails class="stretch-note">{{ note }}</p>
       }
+      @if (source(); as src) {
+        <p sumiSummaryDetails class="source-line">
+          <a [href]="src.link" target="_blank" rel="noopener">{{ src.label }}</a>
+        </p>
+      }
     </sumi-session-summary>
   </sumi-session-gate>
 

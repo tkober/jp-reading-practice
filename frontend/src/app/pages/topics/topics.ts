@@ -2,11 +2,20 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { SUMI_LAYOUT } from 'sumi-ui/layout';
 
 import { Api } from '../../core/api';
-import type { TopicApi, TopicCreatePayload, TopicStyleApi, TopicUpdatePayload } from '../../core/api.types';
+import type {
+  TopicApi,
+  TopicCreatePayload,
+  TopicStyleApi,
+  TopicUpdatePayload,
+} from '../../core/api.types';
 import { isBackendUnreachable } from '../../core/unreachable';
 import { TopicEditScreen } from '../../features/topics/topic-edit-screen';
 import { TopicsListScreen } from '../../features/topics/topics-list-screen';
-import type { TopicDefaultStyle, TopicDraft, TopicSummary } from '../../features/topics/topics.types';
+import type {
+  TopicDefaultStyle,
+  TopicDraft,
+  TopicSummary,
+} from '../../features/topics/topics.types';
 
 type Mode = 'list' | 'edit';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -91,8 +100,10 @@ export class TopicsPage {
     const topic = this.editingTopic();
     return topic !== null && !topic.is_builtin;
   });
-  /** Only the "Current events" topic shows the RSS feed editor (per the approved design). */
-  protected readonly showRssFeeds = computed(() => this.editingTopic()?.slug === 'current-events');
+  /** Every topic shows the RSS feed editor (issue #15) -- a topic becomes
+   *  "news-backed" simply by having `feed_urls`, not by being Current
+   *  events specifically. */
+  protected readonly showRssFeeds = computed(() => true);
 
   constructor() {
     this.reload();

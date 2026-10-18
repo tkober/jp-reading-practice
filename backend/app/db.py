@@ -212,6 +212,19 @@ class GeneratedText(Base):
     usage: Mapped[list] = mapped_column(JSONB, nullable=False)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    #: `{title, link, published, via: "rss"|"web_search"}` for the one
+    #: material item a news-backed topic's text retold (issue #15), `NULL`
+    #: for every other text (no `feed_urls` on its topic) and for a
+    #: news-backed one whose material fetch failed (`material_error` below
+    #: instead). Alembic revision `0007`.
+    source: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: Why no material was available for a news-backed topic (issue #15) --
+    #: reported the same way `known_snapshot["kanji_trainer_error"]` is:
+    #: generation still happened, with the frame's own neutral fallback
+    #: line instead of real material. `NULL` for a topic with no feeds at
+    #: all, and for one whose material fetch succeeded. Alembic revision
+    #: `0007`.
+    material_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

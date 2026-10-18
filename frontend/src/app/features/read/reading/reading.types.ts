@@ -11,9 +11,20 @@ export type {
 
 import type { SumiReadingParagraph } from 'sumi-ui/practice';
 
+/** "Source: <title> ↗" (issue #15), resolved from the backend's own
+ *  `TextSourceApi` by `pages/read/source-line.ts`'s pure `sourceLineFor` --
+ *  shown under the reading screen's last paragraph and again on the
+ *  summary (`SummaryScreen`'s own `source` input reuses this same shape). */
+export interface SourceLine {
+  label: string;
+  link: string;
+}
+
 export interface ReadingTextData {
   titleJapanese: string;
   paragraphs: readonly SumiReadingParagraph[];
+  /** `null`/absent for a text with no material source at all. */
+  source?: SourceLine | null;
 }
 
 // The word lookup's own domain shapes. `sumi-popover` (sumi-ui#95) only

@@ -289,6 +289,18 @@ class TextTargets(BaseModel):
     style: TopicStyle
 
 
+class TextSourceOut(BaseModel):
+    """The one material item a news-backed topic's text retold (issue
+    #15) -- `link` is what the reading/summary screens' "Source: ... ↗"
+    line points at; `title`/`published` are shown, never the raw item
+    summary (the text itself is the retelling)."""
+
+    title: str
+    link: str
+    published: str | None = None
+    via: Literal["rss", "web_search"]
+
+
 class TextOut(BaseModel):
     """`POST /api/texts` and `GET /api/texts/{id}`'s response.
 
@@ -308,6 +320,14 @@ class TextOut(BaseModel):
     model: str
     cost_usd: float | None = None
     kanji_trainer_error: str | None = None
+    #: The material this text retold (issue #15), `None` when its topic has
+    #: no feeds at all, or when the material fetch failed -- see
+    #: `material_error`.
+    source: TextSourceOut | None = None
+    #: Why no material was available for a news-backed topic, `None`
+    #: otherwise (not news-backed, or the fetch succeeded) -- shown on the
+    #: gate as a notice, same spirit as `kanji_trainer_error`.
+    material_error: str | None = None
 
 
 # --- Reading sessions (issue #9) ---------------------------------------------

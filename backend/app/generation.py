@@ -21,11 +21,12 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from . import kanji_trainer as kt
+from . import news
 from .analysis import analyze, collect_lemmas
 from .known_set import KnownSet, fetch_known_set
 from .models import JlptMixTarget, Metrics, QuestionOut, TextAnalysis
-from .pricing import CallUsage, usage_from_response
-from .prompts import build_correction_instructions, build_generation_instructions
+from .pricing import CallUsage, usage_from_response, web_search_cost_usd
+from .prompts import MaterialItem, build_correction_instructions, build_generation_instructions
 from .runtime_config import RuntimeConfig
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,14 @@ class GeneratedTextSchema(BaseModel):
     title: str = ""
     paragraphs: list[str] = Field(default_factory=list)
     questions: list[GeneratedQuestion] = Field(default_factory=list)
+    #: Which `# Material` item (its 0-based position in the prompt's own
+    #: list) the text retold -- only meaningful when material was given at
+    #: all; `-1` otherwise. Structured Outputs' strict mode still forces
+    #: the model to return *something* here even for a topic with no
+    #: material (there is no per-field "optional" in strict mode), so a
+    #: non-news-backed topic's generations simply carry a meaningless `-1`
+    #: that `generate_text()` below never reads.
+    source_index: int = -1
 
 
 def _strict_schema(model: type[BaseModel]) -> dict:
@@ -246,6 +255,47 @@ class GenerationOutcome:
     model: str
     kanji_trainer_error: str | None
     known_snapshot: dict[str, object]
+    #: `{title, link, published, via}` for the one material item the text
+    #: retold (issue #15), or `None` when there was no material at all --
+    #: never set together with `material_error`.
+    source: dict[str, object] | None = None
+    #: Why no material was available for a news-backed topic (a dead feed,
+    #: nothing fresh, a web-search failure) -- reported the same way
+    #: `kanji_trainer_error` is: generation still happens, just with the
+    #: frame's own neutral fallback line instead of real material. `None`
+    #: for a topic with no `feed_urls` at all, and for one whose material
+    #: fetch succeeded.
+    material_error: str | None = None
+    #: The `web_search` tool's own flat per-call fee (issue #15,
+    #: `pricing.web_search_cost_usd`) -- *not* included in `calls` (which
+    #: only ever carries token usage); `api/texts.py` adds this on top of
+    #: `pricing.cost_usd(model, calls)` for the stored `cost_usd`.
+    extra_cost_usd: float = 0.0
+
+
+async def _gather_material(
+    *, config: RuntimeConfig, feed_urls: list[str], topic_title: str
+) -> tuple[list[news.NewsItem], str | None, CallUsage | None]:
+    """The material step (issue #15): nothing at all for a topic with no
+    `feed_urls` (not news-backed); otherwise RSS by default, or one OpenAI
+    web-search call instead when `RuntimeConfig.web_search_enabled` is on.
+
+    Returns `(items, material_error, extra_usage)` -- `extra_usage` is only
+    ever set by the web-search path (its own token cost), and `items`/
+    `material_error` are mutually exclusive, same as `news.MaterialResult`.
+    """
+    if not feed_urls:
+        return [], None, None
+
+    if config.web_search_enabled:
+        try:
+            result, usage = await news.fetch_web_search_material(config, topic_title)
+        except news.WebSearchUnsupported as exc:
+            return [], str(exc), None
+        return result.items, result.error, usage
+
+    result = await news.fetch_rss_material(feed_urls)
+    return result.items, result.error, None
 
 
 async def _known_snapshot_and_set(url: str) -> tuple[KnownSet, dict[str, object], str | None]:
@@ -305,8 +355,15 @@ async def generate_text(
     length_chars: int,
     jlpt_mix: JlptMixTarget,
     unknown_kanji_target: float,
+    topic_title: str = "",
+    feed_urls: list[str] | None = None,
 ) -> GenerationOutcome:
     """Generate one text, measure it, and run at most one correction round.
+
+    `topic_title`/`feed_urls` (issue #15) drive the material step --
+    `feed_urls` empty (the default) means this topic is not news-backed and
+    behaves exactly as before this issue: no material step at all, no
+    `# Material` section, no `source`/`material_error`.
 
     Raises `GenerationError` (status 409 with no key configured, 502 for any
     upstream failure or unusable output).
@@ -317,6 +374,22 @@ async def generate_text(
     known, known_snapshot, kanji_trainer_error = await _known_snapshot_and_set(kanji_trainer_url)
     known_kanji_str = "".join(sorted(known.kanji)) if kanji_trainer_error is None else None
 
+    material_items, material_error, material_usage = await _gather_material(
+        config=config, feed_urls=feed_urls or [], topic_title=topic_title
+    )
+    material = (
+        [
+            MaterialItem(
+                title=item.title,
+                summary=item.summary,
+                published=item.published.isoformat() if item.published else "",
+            )
+            for item in material_items
+        ]
+        if material_items
+        else None
+    )
+
     system_prompt = build_generation_instructions(
         topic_prompt=topic_prompt,
         style=style,
@@ -325,6 +398,8 @@ async def generate_text(
         unknown_kanji_target=unknown_kanji_target,
         known_kanji=known_kanji_str,
         kanji_trainer_error=kanji_trainer_error,
+        material=material,
+        material_error=material_error,
     )
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_prompt},
@@ -345,7 +420,9 @@ async def generate_text(
             },
         }
 
-    calls: list[CallUsage] = []
+    # The web-search material call's own token usage (issue #15) -- its
+    # flat per-call fee is `extra_cost_usd`, computed separately below.
+    calls: list[CallUsage] = [material_usage] if material_usage is not None else []
 
     async def one_attempt() -> tuple[GeneratedTextSchema, str, TextAnalysis]:
         body_response = await _post_chat_completion(
@@ -408,6 +485,23 @@ async def generate_text(
             "The model returned too few valid comprehension questions.", status=502
         )
 
+    source: dict[str, object] | None = None
+    if material_items:
+        index = best_parsed.source_index
+        if not (0 <= index < len(material_items)):
+            # The model did not return a usable index for the material it
+            # was given -- attribute the text to the first item rather than
+            # losing the source link entirely (brief: the retelling is of
+            # "one" item either way, and this is the one listed first).
+            index = 0
+        chosen = material_items[index]
+        source = {
+            "title": chosen.title,
+            "link": chosen.link,
+            "published": chosen.published.isoformat() if chosen.published else None,
+            "via": "web_search" if config.web_search_enabled else "rss",
+        }
+
     return GenerationOutcome(
         title=best_parsed.title.strip(),
         body=best_body,
@@ -418,4 +512,7 @@ async def generate_text(
         model=config.generation_model,
         kanji_trainer_error=kanji_trainer_error,
         known_snapshot=known_snapshot,
+        source=source,
+        material_error=material_error,
+        extra_cost_usd=web_search_cost_usd(1) if material_usage is not None else 0.0,
     )

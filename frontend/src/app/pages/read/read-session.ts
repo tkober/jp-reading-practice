@@ -28,6 +28,7 @@ import { ReadingScreen } from '../../features/read/reading/reading-screen';
 import { SummaryScreen } from '../../features/read/summary/summary-screen';
 import type { LookedUpWord } from '../../features/read/summary/summary.types';
 import { ActiveTimeTracker } from './active-time-tracker';
+import { sourceLineFor } from './source-line';
 import { stretchNoteText } from './stretch-note';
 import { sentenceForToken, truncateForChip } from './sentence-for-token';
 import { firstUnansweredQuestionIndex, screenForStatus } from './status-routing';
@@ -169,7 +170,11 @@ export class ReadSessionPage {
       this.paragraphs = session.text.paragraphs;
       const { paragraphs, tokensById } = mapApiParagraphsToReadingText(session.text.paragraphs);
       this.tokensById = new Map(tokensById);
-      this.readingText.set({ titleJapanese: session.text.title, paragraphs });
+      this.readingText.set({
+        titleJapanese: session.text.title,
+        paragraphs,
+        source: sourceLineFor(session.text.source),
+      });
       this.selectedWordId.set(null);
       this.selectedWord.set(null);
       this.paused.set(false);
@@ -566,6 +571,13 @@ export class ReadSessionPage {
    *  session did not move it -- see `stretch-note.ts`. */
   protected readonly stretchNote = computed(() =>
     stretchNoteText(this.summary()?.stretch_adjustment ?? null),
+  );
+
+  /** Same "Source: <title> ↗" line as the reading screen (issue #15),
+   *  repeated on the summary -- read from the already-loaded session
+   *  rather than a new field on `SessionSummaryApi`. */
+  protected readonly summarySource = computed(() =>
+    sourceLineFor(this.session()?.text.source ?? null),
   );
 
   protected onReadAgain(): void {

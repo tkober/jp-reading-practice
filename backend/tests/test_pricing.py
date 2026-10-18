@@ -3,7 +3,9 @@ computes an exact cost, an unknown one reports `None` rather than a guess."""
 
 from __future__ import annotations
 
-from app.pricing import CallUsage, cost_usd, rates_for
+import pytest
+
+from app.pricing import CallUsage, cost_usd, rates_for, web_search_cost_usd
 
 
 def test_known_model_gets_an_exact_cost() -> None:
@@ -48,3 +50,15 @@ def test_every_curated_generation_model_has_a_rate() -> None:
     # model_catalog.py's "generation"/"help" slots.
     for model in ("gpt-4o-mini", "gpt-4o", "gpt-5-mini", "gpt-5"):
         assert rates_for(model) is not None, f"{model} should have a rate"
+
+
+# --- web search tool pricing (issue #15) -------------------------------------
+
+
+def test_web_search_cost_is_ten_dollars_per_thousand_calls() -> None:
+    assert web_search_cost_usd(1) == pytest.approx(0.01)
+    assert web_search_cost_usd(1000) == pytest.approx(10.0)
+
+
+def test_web_search_cost_is_zero_for_no_calls() -> None:
+    assert web_search_cost_usd(0) == 0.0

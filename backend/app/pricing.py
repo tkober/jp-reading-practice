@@ -101,3 +101,23 @@ def cost_usd(model: str, calls: list[CallUsage]) -> float | None:
             + call.completion_tokens * rates.output
         )
     return total / TOKENS_PER_UNIT
+
+
+#: The `web_search` built-in tool's own flat per-call fee (issue #15),
+#: **separate** from the tokens that call spends -- those ride in a plain
+#: `CallUsage` like any other call (billed at the calling model's own rate
+#: above, per the page's own wording: "Search content tokens billed at
+#: model rates"), so only the flat fee needs its own number here.
+#:
+#: Source: https://developers.openai.com/api/docs/pricing, "Tools" section,
+#: checked 2026-10-18: "Web search (all models) | $10.00 / 1k calls +
+#: Search content tokens billed at model rates." (A separate, pricier
+#: preview tier exists for some reasoning models/non-reasoning-model
+#: previews; this app always uses the standard, all-models rate.)
+WEB_SEARCH_COST_PER_CALL = 10.00 / 1_000
+
+
+def web_search_cost_usd(call_count: int) -> float:
+    """The flat per-call fee for `call_count` `web_search` tool calls --
+    the search's own token cost is not part of this, see above."""
+    return call_count * WEB_SEARCH_COST_PER_CALL

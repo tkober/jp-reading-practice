@@ -16,6 +16,7 @@ export interface TopicDraft {
   glyph: string;
   defaultStyle: TopicDefaultStyle;
   prompt: string;
-  /** Only meaningful for the "Current events" topic — see `showRssFeeds`. */
+  /** A topic becomes "news-backed" for generation simply by having at
+   *  least one of these (issue #15) -- any topic can. */
   rssFeeds: readonly string[];
 }

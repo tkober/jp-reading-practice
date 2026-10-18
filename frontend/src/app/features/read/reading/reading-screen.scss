@@ -86,6 +86,18 @@
   }
 }
 
+// The retold news item's own link (issue #15), right under the text --
+// quiet, not a button: it is attribution, not a call to action.
+.source-line {
+  margin: var(--sumi-space-4) 0 0 0;
+  font-size: var(--sumi-text-sm);
+  color: var(--sumi-text-2);
+
+  a {
+    color: inherit;
+  }
+}
+
 .done-bar {
   position: sticky;
   bottom: 0;

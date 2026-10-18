@@ -32,7 +32,8 @@ const STYLE_OPTIONS: SumiSegmentedOption<TopicDefaultStyle>[] = [
 })
 export class TopicEditScreen {
   readonly draft = input.required<TopicDraft>();
-  /** Only the "Current events" topic has RSS feeds. */
+  /** Every topic can have RSS feeds (issue #15) -- having at least one
+   *  makes it "news-backed" for generation. */
   readonly showRssFeeds = input(false);
   /** Shown only for a saved, non-built-in topic -- built-ins are reset, not deleted. */
   readonly canDelete = input(false);

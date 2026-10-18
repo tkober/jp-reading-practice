@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Fixture News (Atom)</title>
+  <link href="https://example.test/atom/"/>
+  <updated>{channel_date}</updated>
+  <entry>
+    <title>新しい電車が導入されます</title>
+    <link href="https://example.test/atom/train"/>
+    <summary>来月から新しい電車が導入される予定です。</summary>
+    <updated>{fresh_item_date}</updated>
+  </entry>
+  <entry>
+    <title>日付のない記事（アトム）</title>
+    <link href="https://example.test/atom/no-date"/>
+    <summary>この記事には日付がありません。</summary>
+  </entry>
+  <entry>
+    <title>古いアトム記事</title>
+    <link href="https://example.test/atom/old"/>
+    <summary>これは古い記事です。</summary>
+    <updated>{stale_item_date}</updated>
+  </entry>
+</feed>

@@ -34,6 +34,13 @@ export class GateScreen {
    *  values quietly meaning something different than usual. */
   readonly kanjiTrainerErrorNote = input<string | null>(null);
 
+  /** Set only when the generated text's `material_error` was set (issue
+   *  #15): a news-backed topic whose feed(s)/web search had nothing fresh
+   *  -- generation still happened, with the frame's own neutral fallback
+   *  line instead of real material, so the gate says so the same way it
+   *  already does for `kanjiTrainerErrorNote` above. */
+  readonly materialErrorNote = input<string | null>(null);
+
   readonly start = output<void>();
 
   protected readonly summaryLine = computed(
