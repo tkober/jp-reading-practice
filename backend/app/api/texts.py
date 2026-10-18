@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import presets, stretch, stretch_store
-from ..db import GeneratedText, Topic, get_session
+from ..db import GeneratedText, Suggestion, Topic, get_session
 from ..generation import GenerationError, generate_text
 from ..models import (
     JlptMixTarget,
@@ -177,7 +177,34 @@ async def create_text(
     session.add(row)
     await session.commit()
     await session.refresh(row)
+
+    if payload.suggestion_id is not None:
+        await _mark_suggestion_used(session, payload.suggestion_id, row, targets)
+
     return _text_out(row)
+
+
+async def _mark_suggestion_used(
+    session: AsyncSession, suggestion_id: int, row: GeneratedText, targets: TextTargets
+) -> None:
+    """Mark the suggestion this text was generated from as used -- only
+    when `topic_slug`/`length`/`preset` still match it exactly (issue #14
+    brief: "a learner who changed things did not 'use' it"). A missing or
+    already-used suggestion is silently ignored: generating a text never
+    fails over this bookkeeping.
+    """
+    suggestion = await session.get(Suggestion, suggestion_id)
+    if suggestion is None or suggestion.used_text_id is not None:
+        return
+    payload = suggestion.payload
+    if (
+        payload.get("topic_slug") != targets.topic_slug
+        or payload.get("length") != targets.length
+        or payload.get("preset") != targets.preset
+    ):
+        return
+    suggestion.used_text_id = row.id
+    await session.commit()
 
 
 @router.get("/{text_id}", response_model=TextOut)

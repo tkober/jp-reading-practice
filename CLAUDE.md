@@ -853,6 +853,106 @@ reading about) becomes "Stretch is now a little harder."/"...a little
 easier." via `pages/read/stretch-note.ts`'s `stretchNoteText` (pure, unit
 tested), shown under the summary tiles (`SummaryScreen.stretchNote`).
 
+### AI suggestion for the next text (issue #14)
+
+A secondary button on the setup screen, **"Suggest next text"**, above the
+topic picker -- while it runs the button shows "Thinking…" and is disabled;
+the result (or an error) appears as a small card in the same place, never a
+separate page, and nothing here ever suggests automatically.
+
+**`POST /api/suggestions`** (`app/api/suggestions.py`) -> `{id, topic_slug,
+length, preset, overrides | null, reason}` (`models.SuggestionOut`). One
+Structured-Outputs chat completion against `RuntimeConfig.help_model` --
+the same slot the three LLM helps/tutor chat use (`app/assist.py`), not
+`generation_model`: this is a short judgement call over a compact context,
+not a full text. Same 409 (no key)/502 (upstream, refusal, empty, unusable
+JSON) convention as every other OpenAI call in this app
+(`generation.GenerationError`).
+
+**The context** (`app/suggestion_prompts.py`'s `SuggestionContext`,
+assembled by `api/suggestions.py`'s `_build_context` -- pure dataclasses in,
+no I/O, so the prompt itself is unit-tested from hand-built values with no
+database at all): every topic's slug/title/style/news-backed-or-not
+(`feed_urls` non-empty, issue #15's own convention); the last 10 *finished*
+sessions, newest first (date, topic, length, preset, style, the text's own
+JLPT level via `stats_math.text_level`, 字/min, helps/100 words,
+comprehension) -- fewer than 3 finished sessions ever, and the prompt says
+so instead and asks for a gentle, welcoming start; the Stats page's own
+reading level/detail and speed trend (`stats_math.compute_summary`, gated
+behind its own `STATS_MIN_SESSIONS` the same way `GET /api/stats` is);
+Stretch's current resolved mix and `d` (`stretch_store.current_d` ->
+`stretch.resolve`); days since the last session of any status (`None` for
+"never read before"); and a one-word time of day
+(`suggestion_prompts.time_of_day_label`) from the browser's own hour
+(`POST /api/suggestions {local_hour}`; the server's clock is usually UTC in
+its container), falling back to the server hour when none is sent.
+
+**The prompt's rules** (`suggestion_prompts._RULES`): vary topics -- avoid
+both of the last two read, unless the learner keeps choosing the same one
+or two on purpose, in which case that repetition itself is the evidence to
+follow; move difficulty only one preset step at a time (easy/stretch/
+challenge, never skip one); prefer a plain preset over overrides, adding one
+only when the evidence above gives it a clear, specific reason; never
+suggest the topic `"surprise"`; the reason must name the concrete evidence
+behind the pick, in 1-2 plain English sentences.
+
+**Validation/clamping** (`app/suggestions.py`, server-side, after Structured
+Outputs already forced the shape): `topic_slug` must be one of the live
+topics' own slugs -- an unknown slug *or* `"surprise"` (never a real row) is
+the same 502, `validate_topic_slug`'s one check covers both. Overrides are
+clamped, never rejected outright: `unknown_kanji_target_percent` into the
+setup screen's own slider range (`setup.types.ts`/`setup-screen.html`,
+0-20%, `clamp_unknown_kanji_target_percent`); `jlpt_mix_percent` normalised
+to sum to exactly 100 in 5-point steps by scaling then largest-remainder
+rounding (`normalize_jlpt_mix_percent`, same tie-break N5-first as
+`stretch._round_mix_percent`) -- *dropped* (not included in the stored
+overrides at all) when it cannot be normalised into something sane: any
+level negative, or everything zero. `resolve_overrides` returns `None`
+overrides entirely once every field has been dropped, so a suggestion that
+gave weak overrides quietly falls back to "prefer the plain preset".
+
+**The schema** (`app/suggestions.py`'s `SuggestionSchema`, via
+`generation._strict_schema`, the same OpenAI Structured-Outputs tightening
+`generation.py`'s own `GeneratedTextSchema` uses): `topic_slug`, `length`,
+`preset` (the same three `Literal`s `TextCreateRequest` uses), `overrides`
+(nullable -- `style`/`unknown_kanji_target_percent`/`jlpt_mix_percent`, the
+model's own percent-space guess, converted to `SuggestionOverridesOut`'s
+fraction convention only after clamping above), `reason`.
+
+**Stored** (`suggestions` table, Alembic `0008`): `id`, `created_at`,
+`payload` JSON (the validated/clamped suggestion exactly as the browser
+received it), `reason` (duplicated as its own column, purely so it can be
+read without unpacking the JSON), `model`, `usage`, `cost_usd`
+(`pricing.cost_usd`, `None` for a model the rate table does not know, same
+convention as `GeneratedText.cost_usd`), `used_text_id` (nullable FK to
+`texts.id`, `ON DELETE SET NULL`).
+
+**`POST /api/texts`** accepts an optional `suggestion_id`
+(`TextCreateRequest.suggestion_id`) and marks that suggestion's
+`used_text_id` once the text is created (`api/texts.py`'s
+`_mark_suggestion_used`) -- but only when `topic_slug`/`length`/`preset` on
+this request still match the suggestion's own `payload` exactly; a learner
+who changed any of the three before generating did not "use" it, per the
+brief, and the field is silently ignored (never a failed generation) for a
+missing or already-used suggestion id.
+
+**Frontend** (`features/read/setup/`): `SetupScreen` gains `suggesting`/
+`suggestion`/`suggestionError` inputs and `suggestNext`/`useSuggestion`/
+`dismissSuggestion` outputs, fully presentational like every other control
+on this screen -- `ReadPage` (`pages/read/read.ts`) owns the actual
+`Api.suggestNext()` call and the applied state. "Use this"
+(`suggestion-apply.ts`'s pure `applySuggestionToSetup`, unit tested on its
+own) sets topic/length/preset and -- only for a field the suggestion
+actually overrode -- the matching "Adjust" control, opening "Adjust" exactly
+when at least one of them is set; it never calls `createText()` itself (the
+brief: applies, does not generate). `ReadPage` remembers the suggestion's
+`id` (`appliedSuggestionId`) and sends it as `suggestion_id` on the next
+`POST /api/texts`, clearing it the moment the learner changes topic, length
+or preset by hand -- the same "did not use it" rule the backend re-checks
+regardless. An error (409/502) shows inline in the card's own place
+(`hint--error`, `var(--sumi-wrong)`), the same convention the word popover's
+helps use for theirs.
+
 ### Current events: RSS / web-search material (issue #15)
 
 A topic is **news-backed** simply by having `feed_urls` (`Topic.feed_urls`,

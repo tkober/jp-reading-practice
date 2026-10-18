@@ -1,5 +1,6 @@
 import { Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import type { SuggestionApi } from '../../../core/api.types';
 import { SumiIcon } from 'sumi-ui/core';
 import {
   SumiButtonDirective,
@@ -12,6 +13,7 @@ import {
   type SumiTileOption,
 } from 'sumi-ui/forms';
 import { SumiBanner, SumiCard, SumiPage } from 'sumi-ui/layout';
+import { applySuggestionToSetup } from './suggestion-apply';
 import {
   READING_LENGTH_CHARS,
   READING_LENGTH_LABELS,
@@ -23,6 +25,18 @@ import {
   type ReadingLength,
   type TextStyle,
 } from './setup.types';
+
+/** Display order/labels for the suggestion card's overrides line -- same
+ *  levels `setup.types.ts`'s own (private) `JLPT_ORDER`/`JLPT_LABELS` use,
+ *  kept local here since nothing else in this component needs them. */
+const SUGGESTION_JLPT_ORDER: (keyof JlptShares)[] = ['n5', 'n4', 'n3', 'n2', 'n1'];
+const SUGGESTION_JLPT_LABELS: Record<keyof JlptShares, string> = {
+  n5: 'N5',
+  n4: 'N4',
+  n3: 'N3',
+  n2: 'N2',
+  n1: 'N1',
+};
 
 const LENGTH_OPTIONS: SumiSegmentedOption<ReadingLength>[] = (
   Object.keys(READING_LENGTH_LABELS) as ReadingLength[]
@@ -83,6 +97,14 @@ export class SetupScreen {
   readonly hasOpenAiKey = input(true);
   readonly kanjiTrainerOnline = input(true);
 
+  /** "Suggest next text" (issue #14) -- `suggesting` disables the button
+   *  and shows "Thinking…" in the card's place; `suggestion`/
+   *  `suggestionError` are mutually exclusive with each other and with
+   *  `suggesting`, all controlled by the host page. */
+  readonly suggesting = input(false);
+  readonly suggestion = input<SuggestionApi | null>(null);
+  readonly suggestionError = input<string | null>(null);
+
   readonly topicSelect = output<string>();
   readonly lengthChange = output<ReadingLength>();
   readonly presetChange = output<DifficultyPreset>();
@@ -91,6 +113,9 @@ export class SetupScreen {
   readonly styleChange = output<TextStyle>();
   readonly adjustToggle = output<void>();
   readonly generate = output<void>();
+  readonly suggestNext = output<void>();
+  readonly useSuggestion = output<void>();
+  readonly dismissSuggestion = output<void>();
 
   protected readonly lengthOptions = LENGTH_OPTIONS;
   protected readonly presetOptions = PRESET_OPTIONS;
@@ -103,7 +128,9 @@ export class SetupScreen {
 
   /** `sumi-share-slider`'s own shape — see `setup.types.ts`'s conversion
    *  helpers for why this app keeps the keyed `JlptShares` everywhere else. */
-  protected readonly jlptSegments = computed<SumiShareSegment[]>(() => jlptSharesToSegments(this.jlptMix()));
+  protected readonly jlptSegments = computed<SumiShareSegment[]>(() =>
+    jlptSharesToSegments(this.jlptMix()),
+  );
 
   protected onJlptSegmentsChange(segments: SumiShareSegment[]): void {
     this.jlptMixChange.emit(segmentsToJlptShares(segments));
@@ -131,4 +158,68 @@ export class SetupScreen {
     }
     this.generate.emit();
   }
+
+  // --- "Suggest next text" card (issue #14) -------------------------------
+
+  /** The suggested topic's own tile (for its glyph/title) -- `null` while
+   *  the topics list has not loaded yet, or for a stale suggestion whose
+   *  topic no longer exists. */
+  protected readonly suggestionTopicTile = computed<SumiTileOption<string> | null>(() => {
+    const current = this.suggestion();
+    if (!current) {
+      return null;
+    }
+    return this.tileOptions().find((tile) => tile.value === current.topic_slug) ?? null;
+  });
+
+  protected readonly suggestionLengthLabel = computed(() => {
+    const current = this.suggestion();
+    return current ? READING_LENGTH_LABELS[current.length] : '';
+  });
+
+  protected readonly suggestionPresetLabel = computed(() => {
+    const current = this.suggestion();
+    if (!current) {
+      return '';
+    }
+    return (
+      this.presetOptions.find((option) => option.value === current.preset)?.label ?? current.preset
+    );
+  });
+
+  /** The suggested overrides converted to the same percent shapes the
+   *  setup controls use (`applySuggestionToSetup`) -- reused here purely
+   *  for display, so the card's one-line summary and what "Use this"
+   *  actually applies can never drift apart. */
+  protected readonly suggestionApplied = computed(() => {
+    const current = this.suggestion();
+    return current ? applySuggestionToSetup(current) : null;
+  });
+
+  /** "casual · 8% unknown kanji · N5 60% N4 40%" -- `null` when the
+   *  suggestion has no overrides at all (the common case), so the card
+   *  shows only length/preset. */
+  protected readonly suggestionOverridesLine = computed<string | null>(() => {
+    const applied = this.suggestionApplied();
+    if (!applied?.adjustOpen) {
+      return null;
+    }
+    const parts: string[] = [];
+    if (applied.style) {
+      parts.push(applied.style);
+    }
+    if (applied.unknownKanjiSharePercent !== undefined) {
+      parts.push(`${applied.unknownKanjiSharePercent}% unknown kanji`);
+    }
+    if (applied.jlptMix) {
+      const mix = applied.jlptMix;
+      const mixParts = SUGGESTION_JLPT_ORDER.filter((level) => mix[level] > 0).map(
+        (level) => `${SUGGESTION_JLPT_LABELS[level]} ${mix[level]}%`,
+      );
+      if (mixParts.length > 0) {
+        parts.push(mixParts.join(' '));
+      }
+    }
+    return parts.length > 0 ? parts.join(' · ') : null;
+  });
 }
