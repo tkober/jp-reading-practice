@@ -82,7 +82,9 @@ the model in `db.py`, then `cd backend && uv run alembic revision
 --autogenerate -m "..."` and hand-check the result. `env.py` runs either on
 the owner connection `init_db` already opened
 (`config.attributes["connection"]`, inside its transaction) or, from the CLI,
-on an engine it builds itself from the owner URL;
+on an engine it builds itself from the owner URL (only then does it load
+`alembic.ini`'s logging config -- in-process it would mute the app's own
+loggers);
 `target_metadata = Base.metadata` is what makes `--autogenerate` and the
 `compare_metadata` guard in `tests/test_migrations.py` possible -- a model
 change that ships without a matching revision fails that test.

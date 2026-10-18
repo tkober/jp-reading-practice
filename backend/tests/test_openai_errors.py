@@ -1,12 +1,11 @@
 """`app.openai_errors` (readable OpenAI error messages): every status/code
 case the brief names, real-looking OpenAI error bodies, plus the "never the
-raw body" guarantee (a monkeypatched `logger.warning` catches what actually
-went to the log instead -- see `test_raw_body_is_logged_but_never_in_the_
-returned_message`'s own comment for why not `caplog`)."""
+raw body" guarantee (the raw body goes to the log, checked with `caplog`)."""
 
 from __future__ import annotations
 
 import json
+import logging
 
 import httpx
 import pytest
@@ -142,26 +141,24 @@ def test_unparseable_body_falls_back_to_a_bare_status_line() -> None:
 
 
 def test_raw_body_is_logged_but_never_in_the_returned_message(
-    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Not `caplog`: alembic's own `env.py` calls `logging.config.fileConfig`
-    # (default `disable_existing_loggers=True`) once per test session, via
-    # the DB fixture's migration run -- which disables every `app.*` logger
-    # already created at collection time, `caplog`'s own handler included.
-    # Patching the module's `logger.warning` directly sidesteps that.
-    logged: list[tuple[object, ...]] = []
-    monkeypatch.setattr(
-        openai_errors.logger, "warning", lambda *args: logged.append(args)
-    )
     exc = _status_error(500, {"error": {"message": "simulated outage", "trace": "x" * 50}})
 
-    message = describe_http_status_error(exc, context="text generation")
+    with caplog.at_level(logging.WARNING, logger=openai_errors.logger.name):
+        message = describe_http_status_error(exc, context="text generation")
 
     assert "simulated outage" not in message
-    assert len(logged) == 1
-    logged_text = " ".join(str(part) for part in logged[0])
-    assert "simulated outage" in logged_text
-    assert "text generation" in logged_text
+    assert "simulated outage" in caplog.text
+    assert "text generation" in caplog.text
+
+
+async def test_running_migrations_in_process_leaves_app_loggers_enabled(session) -> None:
+    """`init_db()` runs Alembic in-process (the `session` fixture does the
+    same); its `env.py` must not mute the app's loggers, or every warning
+    the running app logs goes nowhere."""
+    assert openai_errors.logger.disabled is False
+    assert logging.getLogger("app.generation").disabled is False
 
 
 def test_connection_error_is_readable() -> None:
