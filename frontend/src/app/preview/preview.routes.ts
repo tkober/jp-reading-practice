@@ -77,6 +77,16 @@ export const previewRoutes: Routes = [
     data: { variant: 'paused' },
   },
   {
+    path: 'reading-range',
+    loadComponent: () => import('./screens/reading.preview').then((m) => m.ReadingPreview),
+    data: { variant: 'range' },
+  },
+  {
+    path: 'reading-range-answer',
+    loadComponent: () => import('./screens/reading.preview').then((m) => m.ReadingPreview),
+    data: { variant: 'range-answer' },
+  },
+  {
     path: 'questions',
     loadComponent: () => import('./screens/questions.preview').then((m) => m.QuestionsPreview),
     data: { variant: 'default' },

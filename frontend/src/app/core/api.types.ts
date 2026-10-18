@@ -285,16 +285,20 @@ export interface WordLookupApi {
 }
 
 /**
- * The word popover's three LLM helps (issue #10), `POST /api/sessions/{id}/
+ * The word popover's LLM helps (issue #10, extended by jp-reading-practice
+ * #32's `translate_part`/`grammar_part`), `POST /api/sessions/{id}/
  * assist`'s own kind -- narrower than `WordActionKind` (`features/read/
  * reading/reading.types.ts`), which still carries `'tutor'` for the design
  * (#11's own, separate endpoint once it exists).
  */
-export type AssistKindApi = 'explain' | 'translate' | 'grammar';
+export type AssistKindApi = 'explain' | 'translate' | 'grammar' | 'translate_part' | 'grammar_part';
 
 export interface AssistPayload {
   kind: AssistKindApi;
   token_id: string;
+  /** The span's last token (issue #32) -- required for `translate_part`/
+   *  `grammar_part`, unset for the three whole-word/sentence kinds. */
+  end_token_id?: string;
 }
 
 /** Mirrors the backend's `AssistResult`. */
@@ -323,10 +327,14 @@ export interface ChatMessageApi {
 
 /** Mirrors the backend's `ChatRequest`, `POST /api/sessions/{id}/chat`'s
  *  body -- `focus_token_id` unset for a question with no focus (opened
- *  from the session bar rather than "Ask tutor"). */
+ *  from the session bar rather than "Ask tutor"). `focus_end_token_id`
+ *  (issue #32) is set in addition, only when "Ask tutor" was opened on a
+ *  selected span rather than a single word -- the focus is then that span,
+ *  not the whole sentence containing it. */
 export interface ChatPayload {
   content: string;
   focus_token_id?: string;
+  focus_end_token_id?: string;
 }
 
 /** Mirrors the backend's `ChatResult`. */

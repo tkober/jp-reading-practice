@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiParagraph, ApiToken } from '../../core/api.types';
-import { sentenceForToken, truncateForChip } from './sentence-for-token';
+import { sameSentenceSpan, sentenceForToken, truncateForChip } from './sentence-for-token';
 
 function token(id: string, surface: string): ApiToken {
   return {
@@ -51,6 +51,33 @@ describe('sentenceForToken', () => {
     const paragraphs = [paragraph(['水', 'を', '飲む', '。'])];
     expect(sentenceForToken(paragraphs, '0-99')).toBeNull();
     expect(sentenceForToken(paragraphs, '5-0')).toBeNull();
+  });
+});
+
+describe('sameSentenceSpan (jp-reading-practice#32)', () => {
+  it('returns the sentence text when both ids land in the same sentence', () => {
+    const paragraphs = [paragraph(['水', 'を', '飲む', '。', '猫', 'が', 'いる', '。'])];
+    expect(sameSentenceSpan(paragraphs, '0-0', '0-2')).toBe('水を飲む。');
+  });
+
+  it('returns null when the two ids are in different sentences of the same paragraph', () => {
+    const paragraphs = [paragraph(['水', 'を', '飲む', '。', '猫', 'が', 'いる', '。'])];
+    expect(sameSentenceSpan(paragraphs, '0-0', '0-6')).toBeNull();
+  });
+
+  it('returns null when the two ids are in different paragraphs', () => {
+    const paragraphs = [paragraph(['あ', '。'], 0), paragraph(['い', '。'], 1)];
+    expect(sameSentenceSpan(paragraphs, '0-0', '1-0')).toBeNull();
+  });
+
+  it('returns null for an unknown id', () => {
+    const paragraphs = [paragraph(['水', 'を', '飲む', '。'])];
+    expect(sameSentenceSpan(paragraphs, '0-0', '0-99')).toBeNull();
+  });
+
+  it('works with the ids given in either order', () => {
+    const paragraphs = [paragraph(['水', 'を', '飲む', '。'])];
+    expect(sameSentenceSpan(paragraphs, '0-2', '0-0')).toBe('水を飲む。');
   });
 });
 
