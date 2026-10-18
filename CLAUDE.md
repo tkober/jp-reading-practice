@@ -853,6 +853,117 @@ reading about) becomes "Stretch is now a little harder."/"...a little
 easier." via `pages/read/stretch-note.ts`'s `stretchNoteText` (pure, unit
 tested), shown under the summary tiles (`SummaryScreen.stretchNote`).
 
+### Current events: RSS / web-search material (issue #15)
+
+A topic is **news-backed** simply by having `feed_urls` (`Topic.feed_urls`,
+a JSON list, editable in the Topics screen for *every* topic, not just
+Current events) -- the default seeded for Current events is NHK News Web,
+`https://www.nhk.or.jp/rss/news/cat0.xml` (`backend/topics/
+03-current-events.md`; the *old* `www3.nhk.or.jp` URL this app originally
+shipped with froze in mid-2026, still answering 200 with two-month-old
+`pubDate`s -- the freshness filter below exists specifically so a frozen
+feed like that degrades loudly instead of quietly feeding stale headlines
+into a text). `seed_topics`'s existing "skip a customized row" rule covers
+`feed_urls` the same as every other seeded field -- changing the shipped
+URL here still reaches an untouched install on its next boot, never a
+topic someone has edited.
+
+**The material step** (`app/news.py`, called from `generation.generate_text`
+via its own `_gather_material`) runs before the generation call, only for a
+news-backed topic -- a topic with no feeds behaves exactly as it did before
+this issue, with no `# Material` prompt section and no stored `source`/
+`material_error` at all. Two paths, chosen by the existing
+`RuntimeConfig.web_search_enabled` Settings toggle:
+
+- **RSS (default)**: every feed URL on the topic, fetched with `httpx`
+  (10s timeout, redirects followed, a real browser User-Agent -- NHK and
+  most Japanese news sites 403 a bare `python-httpx/...` one) and parsed
+  with `defusedxml`. RSS 2.0, RDF/RSS 1.0 and Atom are all handled by the
+  *same* pass over the tree, matching `<item>`/`<entry>` by local element
+  name regardless of namespace (`news._parse_feed_items`) -- the three
+  formats differ in element names, not in overall shape. An item's date is
+  `pubDate`/`dc:date` (RFC 822) or Atom's `published`/`updated` (ISO 8601);
+  an item with no date of its own is kept only if the *feed's* own
+  channel-level date (`lastBuildDate`/`pubDate`/`dc:date`/`updated`,
+  `news._feed_own_date`, read only from `channel`'s or the root's *direct*
+  children, never an item's own same-named field) is itself within
+  `FRESHNESS_WINDOW` (3 days) -- this is the frozen-feed case above: every
+  item on a feed that stopped publishing is older than 3 days, so the
+  whole feed reports "nothing fresh" rather than silently passing old
+  headlines through. Merged across every feed on the topic, newest first,
+  top 5 (`MAX_ITEMS`). One feed failing (down, malformed XML) does not fail
+  the others; `MaterialResult.error` is only set when *nothing* fresh came
+  back from any feed, naming either the fetch failures or "nothing fresh"
+  depending on which happened. Cached in-process per URL, 15 minutes
+  (`news._feed_cache`, `news.clear_cache()` for tests -- same shape as
+  `kanji_trainer.py`'s own cache).
+- **Web search (opt-in)**: for a news-backed topic only, instead of RSS,
+  one OpenAI **Responses API** call (`POST /responses`, not
+  `/chat/completions`) with the built-in `web_search` tool, asking for 3-5
+  current Japanese items about the topic as structured JSON (`text.format`
+  `json_schema`, the Responses API's own equivalent of Chat Completions'
+  `response_format`) -- `RuntimeConfig.generation_model` either way, so
+  switching the toggle never introduces a second configured model. The
+  call's own token usage (`usage.input_tokens`/`output_tokens`/
+  `input_tokens_details.cached_tokens`, confirmed against
+  developers.openai.com's Responses API reference, 2026-10-18) is billed at
+  that model's normal chat rate and folded straight into the text's own
+  `calls`/`usage`; the tool's *own* flat per-call fee
+  (`pricing.web_search_cost_usd`, $10.00/1k calls -- see `pricing.py`'s own
+  citation) is kept separate as `GenerationOutcome.extra_cost_usd`, added on
+  top of `pricing.cost_usd()` for the stored `cost_usd` (`api/texts.py`'s
+  `create_text`) rather than folded into the per-token maths, since it is
+  not a token cost at all. A model that does not support the tool raises
+  `news.WebSearchUnsupported` (detected from the HTTP 400/404 body
+  mentioning `web_search`), which `generate_text` turns into a
+  `material_error` naming the model -- the same degrade-with-a-reason shape
+  every other material failure gets, not a failed generation.
+
+**The prompt** (`prompts.py`'s `_material_section`, called from
+`build_generation_instructions`) adds a `# Material` section right after
+`# Topic`, in one of three shapes: real items to retell (title/summary/date
+only, deliberately never the URL -- `prompts.MaterialItem` has no `link`
+field at all, so there is nothing to leak), the neutral invented-news
+fallback (the "write a plausible, generic... never use real names" wording
+`topics/03-current-events.md` used to carry itself, now generated by the
+frame so it applies no matter *why* the material went missing) when
+`material_error` is set instead, or nothing at all for a topic with no
+feeds. The structured output (`generation.GeneratedTextSchema`) gains
+`source_index` (which listed item, 0-based, the text retold) -- Structured
+Outputs' strict mode forces the model to return *some* integer here even
+for a topic with no material, where it is simply never read; an
+out-of-range index (the model ignoring the instruction) falls back to item
+0 rather than losing the attribution entirely. `test_prompts.py` has the
+same "a malicious topic/material string cannot remove the frame's own
+rules" snapshot-style tests the rest of the prompt already had, extended to
+a material item's own title.
+
+**Stored** (`texts.source`/`texts.material_error`, Alembic revision `0007`):
+`source` is `{title, link, published, via: "rss"|"web_search"}` for the one
+material item retold, `null` for a topic with no feeds and for one whose
+material fetch failed; `material_error` is the English reason for the
+latter, `null` otherwise -- reported the same way
+`known_snapshot["kanji_trainer_error"]` already is (generation still
+happens, just with the fallback line, and the reason rides alongside the
+row rather than failing the request). `TextOut`/`TextSourceOut` (`models.py`)
+carry both to the browser.
+
+**Frontend**: `pages/read/source-line.ts`'s pure `sourceLineFor` (unit
+tested, `source-line.spec.ts`) turns a `TextOutApi.source` into "Source:
+<title> ↗" (`ReadingTextData.source`/`SummaryScreen.source`, both the same
+`SourceLine` shape from `features/read/reading/reading.types.ts`) -- shown
+as a quiet link (`target="_blank" rel="noopener"`) right under the reading
+screen's last paragraph, above "Done reading", and again on the summary;
+`null` renders neither. `GateScreen.materialErrorNote` (optional, default
+`null`, same pattern as the pre-existing `kanjiTrainerErrorNote`) shows
+`material_error` as a second `sumi-banner` notice on the gate. The Topics
+editor's RSS feeds field (`TopicEditScreen.showRssFeeds`) is shown for
+*every* topic now, not only Current events -- any topic becomes
+news-backed simply by having at least one feed URL; its placeholder/hint
+name the current NHK URL and explain what adding a feed does. Settings'
+existing web-search toggle gets one more hint line: "Current events use web
+search instead of RSS feeds; adds the search cost to each text."
+
 ## Sumi UI
 
 `frontend/sumi-ui` is a git submodule (`tkober/sumi-ui`, shared with the
