@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SumiButtonDirective } from 'sumi-ui/forms';
@@ -28,6 +28,7 @@ import { ReadingScreen } from '../../features/read/reading/reading-screen';
 import { SummaryScreen } from '../../features/read/summary/summary-screen';
 import type { LookedUpWord } from '../../features/read/summary/summary.types';
 import { ActiveTimeTracker } from './active-time-tracker';
+import { stretchNoteText } from './stretch-note';
 import { sentenceForToken, truncateForChip } from './sentence-for-token';
 import { firstUnansweredQuestionIndex, screenForStatus } from './status-routing';
 import { mapApiParagraphsToReadingText } from './token-mapping';
@@ -560,6 +561,12 @@ export class ReadSessionPage {
   protected summaryLookedUpWords(): readonly LookedUpWord[] {
     return this.summary()?.looked_up_words ?? [];
   }
+
+  /** "Stretch is now a little harder/easier." (issue #13), `null` if this
+   *  session did not move it -- see `stretch-note.ts`. */
+  protected readonly stretchNote = computed(() =>
+    stretchNoteText(this.summary()?.stretch_adjustment ?? null),
+  );
 
   protected onReadAgain(): void {
     const session = this.session();

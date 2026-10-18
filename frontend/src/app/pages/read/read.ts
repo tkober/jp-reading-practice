@@ -3,7 +3,12 @@ import { Router } from '@angular/router';
 import type { SumiTileOption } from 'sumi-ui/forms';
 
 import { Api, ApiError, KanjiTrainerStatusUnavailable } from '../../core/api';
-import type { TextCreatePayload, TextOutApi, TextOverridesApi } from '../../core/api.types';
+import type {
+  PresetsApi,
+  TextCreatePayload,
+  TextOutApi,
+  TextOverridesApi,
+} from '../../core/api.types';
 import { GenerationFailedScreen } from '../../features/read/error/generation-failed-screen';
 import {
   GeneratingScreen,
@@ -14,6 +19,7 @@ import { SetupScreen } from '../../features/read/setup/setup-screen';
 import {
   DIFFICULTY_PRESETS,
   type DifficultyPreset,
+  type DifficultySettings,
   type JlptShares,
   type ReadingLength,
   type TextStyle,
@@ -83,6 +89,14 @@ export class ReadPage {
   protected readonly kanjiTrainerOnline = signal(true);
   protected readonly paceCharsPerMinute = signal(150);
 
+  /**
+   * `GET /api/presets`'s resolved values (issue #13) -- `null` until it
+   * loads, or if it never does (offline), in which case `effectiveDefaults`
+   * falls back to the static `DIFFICULTY_PRESETS` table below, exactly as
+   * before #13.
+   */
+  private readonly presets = signal<PresetsApi | null>(null);
+
   protected readonly generationSteps = signal<readonly GenerationStep[]>(INITIAL_STEPS);
   protected readonly errorMessage = signal('');
   protected readonly textOut = signal<TextOutApi | null>(null);
@@ -128,6 +142,52 @@ export class ReadPage {
       (pace) => this.paceCharsPerMinute.set(pace.chars_per_minute),
       () => undefined, // Falls back to the component's own 150 default.
     );
+
+    this.api.presets().then(
+      (presets) => {
+        this.presets.set(presets);
+        // Refresh the *currently selected* preset's defaults now that the
+        // live numbers are in -- but only for a field the learner has not
+        // touched themselves (the same condition `onPresetChange` applies).
+        if (!this.kanjiTouched()) {
+          this.unknownKanjiSharePercent.set(
+            this.effectiveDefaults(this.preset()).unknownKanjiSharePercent,
+          );
+        }
+        if (!this.jlptTouched()) {
+          this.jlptMix.set(this.effectiveDefaults(this.preset()).jlptMix);
+        }
+      },
+      () => undefined, // Offline -- the static DIFFICULTY_PRESETS stays the fallback.
+    );
+  }
+
+  /**
+   * A preset's resolved defaults: the live `GET /api/presets` numbers once
+   * loaded (`unknown_kanji_target`/`jlpt_mix` as percent, matching
+   * `DifficultySettings`'s own shape), else the static fallback table --
+   * `style` always comes from the static table, since no preset on the
+   * backend carries one of its own (`presets.Preset.style_default` is
+   * `None` for all three; the *topic's* own default wins instead).
+   */
+  private effectiveDefaults(preset: DifficultyPreset): DifficultySettings {
+    const fallback = DIFFICULTY_PRESETS[preset];
+    const live = this.presets();
+    if (!live) {
+      return fallback;
+    }
+    const resolved = live[preset];
+    return {
+      unknownKanjiSharePercent: Math.round(resolved.unknown_kanji_target * 100),
+      jlptMix: {
+        n5: Math.round((resolved.jlpt_mix.n5 ?? 0) * 100),
+        n4: Math.round((resolved.jlpt_mix.n4 ?? 0) * 100),
+        n3: Math.round((resolved.jlpt_mix.n3 ?? 0) * 100),
+        n2: Math.round((resolved.jlpt_mix.n2 ?? 0) * 100),
+        n1: Math.round((resolved.jlpt_mix.n1 ?? 0) * 100),
+      },
+      style: fallback.style,
+    };
   }
 
   // --- setup -----------------------------------------------------------
@@ -144,7 +204,7 @@ export class ReadPage {
 
   protected onPresetChange(preset: DifficultyPreset): void {
     this.preset.set(preset);
-    const defaults = DIFFICULTY_PRESETS[preset];
+    const defaults = this.effectiveDefaults(preset);
     this.unknownKanjiSharePercent.set(defaults.unknownKanjiSharePercent);
     this.jlptMix.set(defaults.jlptMix);
     this.style.set(defaults.style);

@@ -17,6 +17,8 @@ const EMPTY_STATS: StatsApi = {
   speed_by_style: [],
   speed_by_topic: [],
   problem_words: [],
+  stretch_level_series: [],
+  stretch_now: null,
 };
 
 /**
@@ -58,6 +60,10 @@ export class StatsPage {
   protected readonly problemWords = computed<readonly ProblemWord[]>(() =>
     toProblemWords(this.data().problem_words),
   );
+  protected readonly stretchLevelSeries = computed<readonly SumiLinePoint[]>(() =>
+    toLinePoints(this.data().stretch_level_series, 'd'),
+  );
+  protected readonly stretchNow = computed<string | null>(() => this.data().stretch_now);
 
   constructor() {
     this.reload();

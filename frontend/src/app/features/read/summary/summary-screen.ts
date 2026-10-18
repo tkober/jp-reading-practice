@@ -28,6 +28,10 @@ export class SummaryScreen {
   readonly questionsTotal = input.required<number>();
   readonly activeTimeMs = input.required<number>();
   readonly lookedUpWords = input<readonly LookedUpWord[]>([]);
+  /** "Stretch is now a little harder."/"...a little easier." (issue #13) --
+   *  `null` hides the line entirely (not a stretch session, an overridden
+   *  one, or "unchanged"). See `pages/read/stretch-note.ts`. */
+  readonly stretchNote = input<string | null>(null);
 
   readonly readAgain = output<void>();
   readonly newText = output<void>();

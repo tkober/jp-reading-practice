@@ -38,6 +38,13 @@ export class StatsScreen {
    *  by style" -- same shape, grouped by topic instead. */
   readonly speedByTopic = input<readonly SumiBar[]>([]);
   readonly problemWords = input<readonly ProblemWord[]>([]);
+  /** `d_after` over Stretch's adjustments, oldest first (issue #13) --
+   *  empty hides the whole "Stretch level" section, same convention as
+   *  every other Stats section being empty under `summary() === null`. */
+  readonly stretchLevelSeries = input<readonly SumiLinePoint[]>([]);
+  /** "Now: N5 45 · N4 35 · N3 18 · N2 2 · 5.5 % unknown kanji" -- `null`
+   *  alongside `stretchLevelSeries` being empty. */
+  readonly stretchNow = input<string | null>(null);
 
   protected readonly problemWordsColumns: readonly SumiTableColumn[] = [
     { key: 'word', label: 'Word' },

@@ -16,12 +16,20 @@
     >
       <sumi-hanko sumiSummaryArt characters="読了" label="Finished reading" />
       <div sumiSummaryTile label="Speed">{{ speedCharsPerMinute() }} <small>字/min</small></div>
-      <div sumiSummaryTile label="Helps">{{ helpsPerHundredWords() }} <small>/100 words</small></div>
+      <div sumiSummaryTile label="Helps">
+        {{ helpsPerHundredWords() }} <small>/100 words</small>
+      </div>
       <div sumiSummaryTile label="Questions">{{ questionsCorrect() }}/{{ questionsTotal() }}</div>
     </sumi-session-summary>
 
+    @if (stretchNote(); as note) {
+      <p class="stretch-note">{{ note }}</p>
+    }
+
     <div class="secondary-action">
-      <button type="button" sumiButton variant="secondary" (click)="readAgain.emit()">Read again</button>
+      <button type="button" sumiButton variant="secondary" (click)="readAgain.emit()">
+        Read again
+      </button>
     </div>
   </sumi-session-gate>
 
