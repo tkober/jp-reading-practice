@@ -179,7 +179,7 @@
 
         @if (wordAnswer(); as currentAnswer) {
           <div class="word-answer" [class.word-answer--error]="currentAnswer.isError">
-            <p class="word-answer__kind">{{ currentAnswer.kind }}</p>
+            <p class="word-answer__kind">{{ currentAnswer.kind.replace('_', ' ') }}</p>
             <p class="word-answer__text">{{ currentAnswer.text }}</p>
           </div>
         }

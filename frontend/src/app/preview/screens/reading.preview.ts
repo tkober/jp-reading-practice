@@ -199,10 +199,8 @@ export class ReadingPreview {
       return;
     }
     const range = document.createRange();
-    const startNode = startSpan.firstChild ?? startSpan;
-    const endNode = endSpan.firstChild ?? endSpan;
-    range.setStart(startNode, 0);
-    range.setEnd(endNode, endNode.textContent?.length ?? 0);
+    range.setStart(startSpan, 0);
+    range.setEnd(endSpan, endSpan.childNodes.length);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
