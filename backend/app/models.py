@@ -260,12 +260,20 @@ class TextCreateRequest(BaseModel):
     `topic_slug` is either a real topic's slug, or the literal `"surprise"`
     sentinel, which picks a random topic at generation time (the stored
     text then names the topic it actually landed on -- see `targets` below).
+
+    `suggestion_id` (issue #14) is set when the learner generated straight
+    from a suggestion card's "Use this" -- `api/texts.py` marks that
+    suggestion's `used_text_id` once the text is created, but only when
+    `topic_slug`/`length`/`preset` here still match the suggestion exactly
+    (a learner who changed something afterwards did not "use" it, per the
+    brief).
     """
 
     topic_slug: str
     length: Literal["short", "medium", "long"]
     preset: Literal["easy", "stretch", "challenge"]
     overrides: TextOverrides | None = None
+    suggestion_id: int | None = None
 
 
 class QuestionOut(BaseModel):
@@ -698,6 +706,35 @@ class PresetsOut(BaseModel):
     easy: PresetOut
     stretch: StretchPresetOut
     challenge: PresetOut
+
+
+# --- AI suggestions (issue #14) ----------------------------------------------
+
+
+class SuggestionOverridesOut(BaseModel):
+    """The suggestion's own overrides, already validated/clamped server-side
+    (`app/suggestions.py`) -- same shape and convention as `TextOverrides`
+    (fractions 0..1), never the model's raw percent-space output. Every
+    field is optional; "Use this" opens "Adjust" on the setup screen exactly
+    when at least one of them is set."""
+
+    style: TopicStyle | None = None
+    unknown_kanji_target: float | None = None
+    jlpt_mix: JlptMixTarget | None = None
+
+
+class SuggestionOut(BaseModel):
+    """`POST /api/suggestions`'s response. `overrides` is `null` whenever
+    the suggestion preferred a plain preset (the common case, per the
+    brief's own prompt rule) -- the setup screen then never opens "Adjust"
+    for it."""
+
+    id: int
+    topic_slug: str
+    length: Literal["short", "medium", "long"]
+    preset: Literal["easy", "stretch", "challenge"]
+    overrides: SuggestionOverridesOut | None = None
+    reason: str
 
 
 # --- Export (issue #12) -------------------------------------------------------

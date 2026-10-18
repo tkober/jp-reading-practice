@@ -454,6 +454,40 @@ class StretchAdjustment(Base):
     )
 
 
+class Suggestion(Base):
+    """One AI suggestion for what to read next (issue #14).
+
+    `payload` is the resolved suggestion as `api/suggestions.py` returned it
+    to the browser (`topic_slug`/`length`/`preset`/`overrides`/`reason`,
+    already validated and clamped -- never the model's raw, unvalidated
+    output); `reason` duplicates `payload["reason"]` as its own column
+    purely so it can be read/queried without unpacking the JSON.
+
+    `used_text_id` is set by `POST /api/texts` when the learner generated
+    from this exact suggestion -- `ON DELETE SET NULL` so deleting the text
+    later does not delete the suggestion's own record of having been used.
+    Nullable, and stays `NULL` for a suggestion that was dismissed, replaced
+    by a later one, or applied with changes (`api/texts.py`'s own "only when
+    topic, length and preset still match" check, per the brief: "a learner
+    who changed things did not 'use' it").
+    """
+
+    __tablename__ = "suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    usage: Mapped[list] = mapped_column(JSONB, nullable=False)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    used_text_id: Mapped[int | None] = mapped_column(
+        ForeignKey("texts.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # --- engine ------------------------------------------------------------------
 
 _engine: AsyncEngine | None = None
