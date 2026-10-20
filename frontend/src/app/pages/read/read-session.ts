@@ -16,6 +16,8 @@ import type { ComprehensionQuestion } from '../../features/read/questions/questi
 import { QuestionsScreen } from '../../features/read/questions/questions-screen';
 import type {
   ChatMessage,
+  RangeSelectEvent,
+  ReadingRange,
   ReadingTextData,
   ReadingWord,
   WordActionKind,
@@ -30,7 +32,7 @@ import type { LookedUpWord } from '../../features/read/summary/summary.types';
 import { ActiveTimeTracker } from './active-time-tracker';
 import { sourceLineFor } from './source-line';
 import { stretchNoteText } from './stretch-note';
-import { sentenceForToken, truncateForChip } from './sentence-for-token';
+import { sameSentenceSpan, sentenceForToken, truncateForChip } from './sentence-for-token';
 import { firstUnansweredQuestionIndex, screenForStatus } from './status-routing';
 import { mapApiParagraphsToReadingText } from './token-mapping';
 
@@ -52,6 +54,19 @@ const WORD_ACTIONS: readonly WordActionOption[] = [
   { kind: 'explain', label: 'Explain word', weight: 2 },
   { kind: 'translate', label: 'Translate sentence', weight: 3 },
   { kind: 'grammar', label: 'Explain grammar', weight: 3 },
+  { kind: 'tutor', label: 'Ask tutor', weight: 3 },
+];
+
+/**
+ * The partial-sentence popover's three actions (jp-reading-practice#32) --
+ * a span counts less than the whole sentence (the owner's decision on
+ * issue #32), so `translate_part`/`grammar_part` are +2, not +3; "Ask
+ * tutor" stays +3, same as it is for a single word (it is a question
+ * either way).
+ */
+const RANGE_ACTIONS: readonly WordActionOption[] = [
+  { kind: 'translate_part', label: 'Translate part', weight: 2 },
+  { kind: 'grammar_part', label: 'Explain grammar', weight: 2 },
   { kind: 'tutor', label: 'Ask tutor', weight: 3 },
 ];
 
@@ -97,6 +112,14 @@ export class ReadSessionPage {
   protected readonly wordAnswer = signal<WordAnswer | null>(null);
   protected readonly wordActionLoading = signal<WordActionKind | null>(null);
 
+  // --- partial-sentence selection (jp-reading-practice#32) -----------------
+
+  /** The currently-highlighted span, or `null` -- forwarded to
+   *  `ReadingScreen`'s own `selectedRange` input for the highlight, and
+   *  read back here to tell a range-popover action apart from a
+   *  word-popover one in `onWordAction` below. */
+  protected readonly selectedRange = signal<ReadingRange | null>(null);
+
   // --- tutor chat (issue #11) ----------------------------------------------
 
   protected readonly chatOpen = signal(false);
@@ -106,6 +129,10 @@ export class ReadSessionPage {
    *  -- `null` for no focus. */
   protected readonly chatFocusLabel = signal<string | null>(null);
   private chatFocusTokenId: string | null = null;
+  /** Set alongside `chatFocusTokenId` only when "Ask tutor" was opened on
+   *  a selected span (jp-reading-practice#32) rather than a single word --
+   *  the focus is then that span, not the whole sentence containing it. */
+  private chatFocusEndTokenId: string | null = null;
 
   private tracker: ActiveTimeTracker | null = null;
   private tickHandle: ReturnType<typeof setInterval> | null = null;
@@ -302,9 +329,11 @@ export class ReadSessionPage {
     // A new word clears the previous one's answer and any in-flight assist
     // (its own `.then`/`.catch` below still runs, but the `selectedWordId`
     // check in each discards whatever it resolves to) -- brief: "Opening
-    // another word clears the answer."
+    // another word clears the answer." A stale range popover (if any) is
+    // replaced the same way -- the two are mutually exclusive.
     this.wordAnswer.set(null);
     this.wordActionLoading.set(null);
+    this.selectedRange.set(null);
 
     this.api.lookupWord(session.id, token.id).then(
       (result) => {
@@ -352,26 +381,97 @@ export class ReadSessionPage {
     this.selectedWord.set(null);
     this.wordAnswer.set(null);
     this.wordActionLoading.set(null);
+    // Closing the popover clears the range too (brief, issue #32) --
+    // whether it was a word or a span popover that just closed.
+    this.selectedRange.set(null);
+  }
+
+  /** A qualifying mouse drag (jp-reading-practice#32): opens the same
+   *  popover a word tap would, anchored on the event's own `element`, with
+   *  the span itself as the header and either `RANGE_ACTIONS` (same
+   *  sentence) or just a note and no actions (crosses a sentence --
+   *  checked client-side, `sentence-for-token.ts`, before even trying). */
+  protected onRangeSelected(event: RangeSelectEvent): void {
+    this.selectedRange.set({ startId: event.startId, endId: event.endId });
+    this.wordAnswer.set(null);
+    this.wordActionLoading.set(null);
+    // A range popover and a word popover are mutually exclusive -- the
+    // `selectedWordId` highlight must not also show on whatever word was
+    // last tapped.
+    this.selectedWordId.set(null);
+
+    const span = event.words.map((word) => word.text).join('');
+    const sentence = sameSentenceSpan(this.paragraphs, event.startId, event.endId);
+    this.selectedWord.set(
+      sentence === null
+        ? { word: span, meanings: [], kind: 'range', note: 'Select within one sentence.' }
+        : { word: span, meanings: [], kind: 'range', actions: RANGE_ACTIONS },
+    );
   }
 
   /**
-   * Explain word / Translate sentence / Explain grammar (issue #10) call
-   * `Api.assist()` directly; "Ask tutor" (issue #11) instead opens the
-   * chat panel with this word's sentence as its focus (`openChatFocusedOn`)
+   * Explain word / Translate sentence / Explain grammar (issue #10), and
+   * their partial-sentence counterparts Translate part / Explain grammar
+   * (issue #32), call `Api.assist()` directly; "Ask tutor" (issue #11)
+   * instead opens the chat panel with this word's sentence -- or, from a
+   * range popover, the span itself -- as its focus (`openChatFocusedOn`)
    * -- there is nothing to await here, so it returns immediately rather
    * than falling into the shared loading/answer plumbing below.
    */
   protected onWordAction(kind: WordActionKind): void {
+    const range = this.selectedRange();
     if (kind === 'tutor') {
+      if (range) {
+        this.onCloseWord();
+        this.openChatFocusedOnRange(range);
+        return;
+      }
       const tokenId = this.selectedWordId();
       this.onCloseWord();
       this.openChatFocusedOn(tokenId);
       return;
     }
+
     const session = this.session();
-    const tokenId = this.selectedWordId();
-    if (!session || !tokenId || this.wordActionLoading() !== null) {
+    if (!session || this.wordActionLoading() !== null) {
       return; // Already loading one -- the popover disables the buttons too.
+    }
+
+    if (kind === 'translate_part' || kind === 'grammar_part') {
+      if (!range) {
+        return;
+      }
+      this.wordActionLoading.set(kind);
+      this.api
+        .assist(session.id, { kind, token_id: range.startId, end_token_id: range.endId })
+        .then(
+          (result) => {
+            if (
+              this.selectedRange()?.startId === range.startId &&
+              this.selectedRange()?.endId === range.endId
+            ) {
+              this.wordActionLoading.set(null);
+              this.wordAnswer.set({ kind: result.kind, text: result.answer });
+            }
+          },
+          (error: unknown) => {
+            if (
+              this.selectedRange()?.startId === range.startId &&
+              this.selectedRange()?.endId === range.endId
+            ) {
+              this.wordActionLoading.set(null);
+              const message =
+                error instanceof ApiError ? error.message : 'This could not be answered.';
+              this.wordAnswer.set({ kind, text: message, isError: true });
+            }
+          },
+        );
+      return;
+    }
+
+    const tokenId = this.selectedWordId();
+    if (!tokenId) {
+      return;
     }
 
     this.wordActionLoading.set(kind);
@@ -420,8 +520,44 @@ export class ReadSessionPage {
     }
     const sentence = sentenceForToken(this.paragraphs, tokenId);
     this.chatFocusTokenId = tokenId;
+    this.chatFocusEndTokenId = null;
     this.chatFocusLabel.set(sentence ? truncateForChip(sentence) : null);
     this.chatOpen.set(true);
+  }
+
+  /** "Ask tutor" on a range popover (jp-reading-practice#32): the chip
+   *  shows the span itself, not its enclosing sentence -- `event.words`
+   *  (or, here, the range's own ids resolved back to the already-loaded
+   *  tokens) already gives the exact text with no extra lookup needed. */
+  private openChatFocusedOnRange(range: ReadingRange): void {
+    this.chatFocusTokenId = range.startId;
+    this.chatFocusEndTokenId = range.endId;
+    const span = this.spanTextFor(range);
+    this.chatFocusLabel.set(span ? truncateForChip(span) : null);
+    this.chatOpen.set(true);
+  }
+
+  /** The joined surface text of every token from `range.startId` to
+   *  `range.endId`, inclusive, from the already-loaded paragraphs -- same
+   *  shape as `sumi-reading-text`'s own `rangeSelected.words`, just
+   *  resolved from `tokensById` instead of carried on the event (this is
+   *  only ever called after the event that produced `range` has already
+   *  passed). */
+  private spanTextFor(range: ReadingRange): string | null {
+    const paragraphIndex = Number(range.startId.split('-')[0]);
+    const tokens = this.paragraphs[paragraphIndex]?.tokens;
+    if (!tokens) {
+      return null;
+    }
+    const startIndex = tokens.findIndex((token) => token.id === range.startId);
+    const endIndex = tokens.findIndex((token) => token.id === range.endId);
+    if (startIndex === -1 || endIndex === -1) {
+      return null;
+    }
+    return tokens
+      .slice(Math.min(startIndex, endIndex), Math.max(startIndex, endIndex) + 1)
+      .map((token) => token.surface)
+      .join('');
   }
 
   protected onChatToggle(): void {
@@ -430,6 +566,7 @@ export class ReadSessionPage {
 
   protected onChatFocusClear(): void {
     this.chatFocusTokenId = null;
+    this.chatFocusEndTokenId = null;
     this.chatFocusLabel.set(null);
   }
 
@@ -443,14 +580,20 @@ export class ReadSessionPage {
     // itself succeeds (brief: "The next question carries that focus;
     // afterwards the chip clears").
     const focusTokenId = this.chatFocusTokenId;
+    const focusEndTokenId = this.chatFocusEndTokenId;
     this.chatFocusTokenId = null;
+    this.chatFocusEndTokenId = null;
     this.chatFocusLabel.set(null);
 
     this.chatMessages.update((messages) => [...messages, { role: 'user', text: message }]);
     this.chatSending.set(true);
 
     this.api
-      .sendChat(session.id, { content: message, focus_token_id: focusTokenId ?? undefined })
+      .sendChat(session.id, {
+        content: message,
+        focus_token_id: focusTokenId ?? undefined,
+        focus_end_token_id: focusEndTokenId ?? undefined,
+      })
       .then(
         (result) => {
           this.chatSending.set(false);

@@ -43,8 +43,11 @@
           <sumi-reading-text
             [paragraphs]="text().paragraphs"
             [selectedWordId]="selectedWordId()"
+            [rangeSelection]="true"
+            [selectedRange]="selectedRange()"
             (wordActivated)="onWordActivate($event)"
             (readingPeeked)="readingPeeked.emit($event)"
+            (rangeSelected)="onRangeSelected($event)"
           />
           @if (text().source; as source) {
             <p class="source-line">
@@ -154,11 +157,17 @@
 
     @if (selectedWord(); as details) {
       <div class="word-body">
-        @if (details.kind !== 'grammar' && details.knownStatus) {
+        @if (details.kind !== 'grammar' && details.kind !== 'range' && details.knownStatus) {
           <p class="word-known-status">{{ details.knownStatus }}</p>
         }
 
-        @if (details.meanings.length > 0) {
+        @if (details.kind === 'range') {
+          <!-- A span has no dictionary entry of its own -- only `note`
+               (e.g. "Select within one sentence.") when there is one. -->
+          @if (details.note) {
+            <p class="word-note">{{ details.note }}</p>
+          }
+        } @else if (details.meanings.length > 0) {
           <ul class="word-meanings">
             @for (meaning of details.meanings; track meaning) {
               <li>{{ meaning }}</li>
@@ -170,7 +179,7 @@
 
         @if (wordAnswer(); as currentAnswer) {
           <div class="word-answer" [class.word-answer--error]="currentAnswer.isError">
-            <p class="word-answer__kind">{{ currentAnswer.kind }}</p>
+            <p class="word-answer__kind">{{ currentAnswer.kind.replace('_', ' ') }}</p>
             <p class="word-answer__text">{{ currentAnswer.text }}</p>
           </div>
         }

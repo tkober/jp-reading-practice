@@ -29,6 +29,13 @@ TRANSLATE_WEIGHT = 3
 GRAMMAR_WEIGHT = 3
 TUTOR_WEIGHT = 3
 
+#: A partial-sentence span (issue #32) counts less than the whole sentence
+#: -- the owner's decision on that issue: translate/grammar on a span is
+#: 2, not 3, while "Ask tutor" on a span stays `TUTOR_WEIGHT` (it is a
+#: question either way, span or not).
+TRANSLATE_PART_WEIGHT = 2
+GRAMMAR_PART_WEIGHT = 2
+
 WEIGHTS: dict[str, int] = {
     "reading_peek": READING_PEEK_WEIGHT,
     "word_lookup": WORD_LOOKUP_WEIGHT,
@@ -36,6 +43,8 @@ WEIGHTS: dict[str, int] = {
     "translate": TRANSLATE_WEIGHT,
     "grammar": GRAMMAR_WEIGHT,
     "tutor": TUTOR_WEIGHT,
+    "translate_part": TRANSLATE_PART_WEIGHT,
+    "grammar_part": GRAMMAR_PART_WEIGHT,
 }
 
 

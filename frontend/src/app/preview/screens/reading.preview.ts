@@ -1,5 +1,6 @@
 import { Component, afterNextRender, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import type { SumiReadingRange, SumiReadingRangeSelectEvent } from 'sumi-ui/practice';
 import { ReadingScreen } from '../../features/read/reading/reading-screen';
 import type {
   ChatMessage,
@@ -14,13 +15,24 @@ import { READING_TEXT, findWordByText } from '../fixtures/reading-text.fixture';
 import {
   CHAT_MESSAGES,
   GRAMMAR_ANCHOR_WORD,
+  RANGE_ANCHOR_WORDS,
   WORD_ANSWER_GRAMMAR,
+  WORD_ANSWER_RANGE,
   WORD_DETAILS_GRAMMAR,
   WORD_DETAILS_PRIMARY,
+  WORD_DETAILS_RANGE,
 } from '../fixtures/word-lookup.fixture';
 
 export type ReadingPreviewVariant =
-  'default' | 'word' | 'answer' | 'chat' | 'chat-focus' | 'peek' | 'paused';
+  | 'default'
+  | 'word'
+  | 'answer'
+  | 'chat'
+  | 'chat-focus'
+  | 'peek'
+  | 'paused'
+  | 'range'
+  | 'range-answer';
 
 /** The chat focus chip's own fixture text (issue #11) -- the sentence
  *  "Ask tutor" would carry as the next question's focus. */
@@ -54,12 +66,14 @@ function findWordSpan(text: string): HTMLElement | null {
       [selectedWord]="selectedWord()"
       [selectedWordId]="selectedWordId()"
       [wordAnswer]="wordAnswer()"
+      [selectedRange]="selectedRange()"
       [chatOpen]="chatOpen()"
       [chatMessages]="chatMessages()"
       [chatSending]="chatSending()"
       [chatFocus]="chatFocus()"
       (wordActivate)="onWordActivate($event)"
       (readingPeeked)="onReadingPeeked($event)"
+      (rangeSelected)="onRangeSelected($event)"
       (closeWord)="onCloseWord()"
       (wordAction)="onWordAction($event)"
       (pauseToggle)="paused.set(!paused())"
@@ -92,6 +106,7 @@ export class ReadingPreview {
   protected readonly selectedWord = signal<WordDetails | null>(null);
   protected readonly selectedWordId = signal<string | null>(null);
   protected readonly wordAnswer = signal<WordAnswer | null>(null);
+  protected readonly selectedRange = signal<SumiReadingRange | null>(null);
 
   protected readonly chatOpen = signal(false);
   protected readonly chatMessages = signal<readonly ChatMessage[]>(CHAT_MESSAGES.slice(0, 2));
@@ -116,25 +131,44 @@ export class ReadingPreview {
       this.chatFocus.set(CHAT_FOCUS_SENTENCE);
     } else if (variant === 'paused') {
       this.paused.set(true);
-    } else if (variant === 'word' || variant === 'answer' || variant === 'peek') {
+    } else if (
+      variant === 'word' ||
+      variant === 'answer' ||
+      variant === 'peek' ||
+      variant === 'range' ||
+      variant === 'range-answer'
+    ) {
       // The popover anchors on the word element `wordActivated` carries,
       // and the hover/long-press peek has no preview-only override (the
       // old prototype's `forcePeekWordId` has no library equivalent).
       // Dispatching the *real* gesture on the rendered
       // word span after the first render exercises the exact same code
-      // path a learner's tap/hover would, which is simpler than threading
-      // a second, preview-only bypass through `ReadingScreen` for a state
-      // a real interaction can already produce.
+      // path a learner's tap/hover (or, for the two range variants, a
+      // real mouse drag resolved by `sumi-reading-text` itself) would,
+      // which is simpler than threading a second, preview-only bypass
+      // through `ReadingScreen` for a state a real interaction can
+      // already produce.
       afterNextRender(() => this.simulateVariant(variant));
     }
   }
 
-  private simulateVariant(variant: 'word' | 'answer' | 'peek'): void {
+  private simulateVariant(variant: 'word' | 'answer' | 'peek' | 'range' | 'range-answer'): void {
     if (variant === 'peek') {
       const span = findWordSpan('旅行');
       span?.dispatchEvent(
         new PointerEvent('pointerenter', { pointerType: 'mouse', bubbles: true }),
       );
+      return;
+    }
+
+    if (variant === 'range' || variant === 'range-answer') {
+      this.simulateRangeSelection();
+      // `onRangeSelected` (below) already sets the real `WORD_DETAILS_RANGE`
+      // fixture from the resolved event, so only the answer (for
+      // `range-answer`) needs adding on top.
+      if (variant === 'range-answer') {
+        this.wordAnswer.set(WORD_ANSWER_RANGE);
+      }
       return;
     }
 
@@ -153,6 +187,26 @@ export class ReadingPreview {
     }
   }
 
+  /** Builds a real, non-collapsed `Selection` across `RANGE_ANCHOR_WORDS`'
+   *  two word spans and fires the same `pointerup` a real mouse drag's
+   *  release would -- `sumi-reading-text` resolves it exactly as it would
+   *  a learner's own drag, through `onRangeSelected` below. */
+  private simulateRangeSelection(): void {
+    const [start, end] = RANGE_ANCHOR_WORDS;
+    const startSpan = findWordSpan(start.text);
+    const endSpan = findWordSpan(end.text);
+    if (!startSpan || !endSpan) {
+      return;
+    }
+    const range = document.createRange();
+    range.setStart(startSpan, 0);
+    range.setEnd(endSpan, endSpan.childNodes.length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    endSpan.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'mouse', bubbles: true }));
+  }
+
   protected onWordActivate(event: WordActivateEvent): void {
     const word = event.word;
     this.selectedWordId.set(word.id);
@@ -164,16 +218,28 @@ export class ReadingPreview {
       actions: DEFAULT_ACTIONS,
     });
     this.wordAnswer.set(null);
+    this.selectedRange.set(null);
   }
 
   protected onReadingPeeked(word: ReadingWord): void {
     this.lastPeek.set(word);
   }
 
+  protected onRangeSelected(event: SumiReadingRangeSelectEvent): void {
+    this.selectedRange.set({ startId: event.startId, endId: event.endId });
+    this.selectedWordId.set(null);
+    this.wordAnswer.set(null);
+    // Same curated fixture regardless of which real span the simulated
+    // drag (or, outside the 'range'/'range-answer' variants, a genuine
+    // preview-page drag) actually resolved to.
+    this.selectedWord.set(WORD_DETAILS_RANGE);
+  }
+
   protected onCloseWord(): void {
     this.selectedWord.set(null);
     this.selectedWordId.set(null);
     this.wordAnswer.set(null);
+    this.selectedRange.set(null);
   }
 
   protected onWordAction(kind: WordActionKind): void {

@@ -7,6 +7,8 @@ export type {
   SumiReadingParagraph as ReadingParagraph,
   SumiReadingWord as ReadingWord,
   SumiReadingWordActivateEvent as WordActivateEvent,
+  SumiReadingRange as ReadingRange,
+  SumiReadingRangeSelectEvent as RangeSelectEvent,
 } from 'sumi-ui/practice';
 
 import type { SumiReadingParagraph } from 'sumi-ui/practice';
@@ -32,7 +34,8 @@ export interface ReadingTextData {
 // slot, placement and focus handling -- it has no notion of a "word" at
 // all, so what used to be `proto/word-popover-sheet`'s own types stay
 // app-owned, projected into the popover's content from `reading-screen`.
-export type WordActionKind = 'explain' | 'translate' | 'grammar' | 'tutor';
+export type WordActionKind =
+  'explain' | 'translate' | 'grammar' | 'tutor' | 'translate_part' | 'grammar_part';
 
 export interface WordActionOption {
   kind: WordActionKind;
@@ -60,8 +63,12 @@ export interface WordDetails {
   note?: string;
   /** `'word'` (default) looks up a single word, with a JLPT badge and
    *  Kanji Trainer status; `'grammar'` looks up a grammar pattern instead
-   *  -- shown with a "Grammar" badge and no Kanji Trainer line. */
-  kind?: 'word' | 'grammar';
+   *  -- shown with a "Grammar" badge and no Kanji Trainer line; `'range'`
+   *  (jp-reading-practice#32) is a learner-dragged span of words -- no
+   *  reading line, no badge, no dictionary/Kanji Trainer section at all,
+   *  just the span itself (`word`) and its own actions (or, for a span
+   *  that crosses a sentence boundary, `note` alone and no actions). */
+  kind?: 'word' | 'grammar' | 'range';
 }
 
 export interface WordAnswer {

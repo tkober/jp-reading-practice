@@ -26,6 +26,8 @@ import {
   SumiSessionBar,
   SumiSessionBarActionDirective,
   SumiSessionBarActionLabelDirective,
+  type SumiReadingRange,
+  type SumiReadingRangeSelectEvent,
   type SumiReadingWord,
   type SumiReadingWordActivateEvent,
 } from 'sumi-ui/practice';
@@ -98,6 +100,10 @@ export class ReadingScreen {
   readonly selectedWord = input<WordDetails | null>(null);
   readonly selectedWordId = input<string | null>(null);
   readonly wordAnswer = input<WordAnswer | null>(null);
+  /** The currently-highlighted partial-sentence span (jp-reading-practice
+   *  #32), or `null` -- forwarded straight to `SumiReadingText`'s own
+   *  `selectedRange` input. */
+  readonly selectedRange = input<SumiReadingRange | null>(null);
   /**
    * The action currently waiting on an answer (issue #10), or `null` when
    * none is -- every action button is disabled while this is set (asking
@@ -123,6 +129,10 @@ export class ReadingScreen {
   readonly wordActivate = output<SumiReadingWordActivateEvent>();
   /** Forwarded straight from `SumiReadingText` — see its own doc comment. */
   readonly readingPeeked = output<SumiReadingWord>();
+  /** A qualifying mouse drag (jp-reading-practice#32) — forwarded straight
+   *  from `SumiReadingText`'s own `rangeSelected`, after this component has
+   *  already re-anchored the popover to the event's own `element`. */
+  readonly rangeSelected = output<SumiReadingRangeSelectEvent>();
   readonly closeWord = output<void>();
   readonly wordAction = output<WordActionKind>();
   readonly pauseToggle = output<void>();
@@ -158,6 +168,11 @@ export class ReadingScreen {
   protected onWordActivate(event: SumiReadingWordActivateEvent): void {
     this.anchorEl.set(event.element);
     this.wordActivate.emit(event);
+  }
+
+  protected onRangeSelected(event: SumiReadingRangeSelectEvent): void {
+    this.anchorEl.set(event.element);
+    this.rangeSelected.emit(event);
   }
 
   protected onPopoverOpenChange(open: boolean): void {

@@ -45,6 +45,19 @@ const GROUPS: readonly PreviewGroup[] = [
           'moving away cancels it, a short tap opens the word lookup instead.',
       },
       { path: 'reading-paused', label: 'Reading — paused (blurred)' },
+      {
+        path: 'reading-range',
+        label: 'Reading — partial-sentence selection',
+        note:
+          'Shows 濡れても気にしないことにしました。 selected, forced for this static page via ' +
+          'a real drag-selection gesture. For real: on a desktop mouse, drag across at least ' +
+          'two words in one sentence; a span crossing a sentence boundary shows a note and no ' +
+          'actions instead. Desktop only — touch/pen never starts it.',
+      },
+      {
+        path: 'reading-range-answer',
+        label: 'Reading — partial-sentence answer',
+      },
     ],
   },
   {

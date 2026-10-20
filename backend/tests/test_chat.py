@@ -460,6 +460,160 @@ async def test_a_failed_question_is_left_out_of_the_history_sent_to_the_model(
     assert [m["role"] for m in calls[0]] == ["system", "user"]
 
 
+async def test_focus_end_token_id_prefixes_the_question_with_the_span(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")  # を rides along; "水を飲み" is the span
+    calls: list[list[dict]] = []
+    _patch_answer(monkeypatch, text="「水」は water という意味です。", calls=calls)
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={
+            "content": "これは何の意味ですか？",
+            "focus_token_id": start_id,
+            "focus_end_token_id": end_id,
+        },
+    )
+    assert response.status_code == 200
+
+    final_question = calls[0][-1]
+    assert final_question["content"] == (
+        "About this part of a sentence: 水を飲み (in: 水を飲みます。)\n\nこれは何の意味ですか？"
+    )
+
+    # The stored message keeps the raw content -- only the prompt gets the
+    # prefix -- but `focus_sentence_key` is now the span target, not a
+    # plain sentence key (issue #32: reused, unparsed, no schema change).
+    rows = list(await session.scalars(select(ChatMessage).where(ChatMessage.role == "user")))
+    assert rows[0].content == "これは何の意味ですか？"
+    assert rows[0].focus_sentence_key == f"0-0:{start_id}-{end_id}"
+
+
+async def test_focus_end_token_id_counts_the_same_weight(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")
+    _patch_answer(monkeypatch, text="answer")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={
+            "content": "これは何ですか？",
+            "focus_token_id": start_id,
+            "focus_end_token_id": end_id,
+        },
+    )
+    assert response.json()["weight"] == 3
+
+
+async def test_focus_end_token_id_single_word_span_is_422(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={
+            "content": "これは何ですか？",
+            "focus_token_id": start_id,
+            "focus_end_token_id": start_id,
+        },
+    )
+    assert response.status_code == 422
+
+
+async def test_focus_end_token_id_across_sentences_is_422(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")  # "水を飲みます。"
+    end_id = _token_id(text_row, "猫")  # "猫がいます。" -- a different sentence
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={
+            "content": "これは何ですか？",
+            "focus_token_id": start_id,
+            "focus_end_token_id": end_id,
+        },
+    )
+    assert response.status_code == 422
+
+
+async def test_focus_end_token_id_unknown_is_404(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={
+            "content": "これは何ですか？",
+            "focus_token_id": start_id,
+            "focus_end_token_id": "no-such-token",
+        },
+    )
+    assert response.status_code == 404
+
+
+async def test_focus_end_token_id_without_focus_token_id_is_ignored(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `focus_end_token_id` is never even looked at without `focus_token_id`
+    # (model docstring) -- not a validation error, simply no focus at all.
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    end_id = _token_id(text_row, "飲み")
+    _patch_answer(monkeypatch, text="answer")
+
+    response = await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={"content": "これは何ですか？", "focus_end_token_id": end_id},
+    )
+    assert response.status_code == 200
+    assert response.json()["user_message"]["focus_sentence_key"] is None
+
+
+async def test_an_earlier_span_focused_question_keeps_its_span_focus_in_the_history(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text_row = await _create_text(session)
+    session_id = await _new_session_id(client, text_row.id)
+    start_id = _token_id(text_row, "水")
+    end_id = _token_id(text_row, "飲み")
+    calls: list[list[dict]] = []
+
+    _patch_answer(monkeypatch, text="water", calls=calls)
+    await client.post(
+        f"/api/sessions/{session_id}/chat",
+        json={
+            "content": "これは何の意味ですか？",
+            "focus_token_id": start_id,
+            "focus_end_token_id": end_id,
+        },
+    )
+    await client.post(f"/api/sessions/{session_id}/chat", json={"content": "もう一度？"})
+
+    assert calls[1][1] == {
+        "role": "user",
+        "content": (
+            "About this part of a sentence: 水を飲み (in: 水を飲みます。)\n\nこれは何の意味ですか？"
+        ),
+    }
+
+
 async def test_an_earlier_focused_question_keeps_its_focus_in_the_history(
     client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

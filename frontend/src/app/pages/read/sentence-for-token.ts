@@ -75,6 +75,37 @@ export function sentenceForToken(
 }
 
 /**
+ * The sentence's own text if `startId` and `endId` (a range-selected
+ * span's two ends, jp-reading-practice#32) both land in the *same*
+ * sentence, `null` otherwise (including either id not found at all) --
+ * `ReadingScreen`'s own client-side check, before it even opens the span
+ * popover, so a cross-sentence drag shows "Select within one sentence."
+ * immediately rather than waiting on a round trip that `/assist` would
+ * reject anyway. Same rule as the backend's own `sentences.resolve_span`,
+ * copied verbatim (see that module's own docstring on why a mismatch here
+ * could only ever affect this early UI check, never counting).
+ */
+export function sameSentenceSpan(
+  paragraphs: readonly ApiParagraph[],
+  startId: string,
+  endId: string,
+): string | null {
+  const paragraphIndex = Number(startId.split('-')[0]);
+  if (paragraphIndex !== Number(endId.split('-')[0])) {
+    return null; // different paragraphs -- never the same sentence
+  }
+  const tokens = paragraphs[paragraphIndex]?.tokens;
+  if (!tokens) {
+    return null;
+  }
+  const sentence = splitSentences(tokens).find((span) => span.tokenIds.includes(startId));
+  if (!sentence || !sentence.tokenIds.includes(endId)) {
+    return null;
+  }
+  return sentence.text;
+}
+
+/**
  * The chat focus chip's own display text, e.g. `"水を飲みます…"` for a long
  * sentence -- truncated at `maxLength` characters (Japanese has no spaces
  * to break on, so a hard cut plus an ellipsis is the only sane option).
