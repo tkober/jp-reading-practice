@@ -54,6 +54,35 @@ describe('mapApiParagraphsToReadingText', () => {
     });
   });
 
+  it('passes split segments on so the ruby skips the okurigana', () => {
+    const t = token({
+      id: 'n',
+      surface: '飲み',
+      reading: 'のみ',
+      segments: [
+        { base: '飲', reading: 'の' },
+        { base: 'み', reading: null },
+      ],
+      kanji: [{ character: '飲', jlpt: 5, known: false }],
+      needs_furigana: true,
+    });
+    const { paragraphs } = mapApiParagraphsToReadingText([paragraph([t])]);
+    expect(paragraphs[0][0].segments).toEqual([{ base: '飲', reading: 'の' }, { base: 'み' }]);
+  });
+
+  it('leaves out a single whole-word segment', () => {
+    const t = token({
+      id: 'k',
+      surface: '今朝',
+      reading: 'けさ',
+      segments: [{ base: '今朝', reading: 'けさ' }],
+      kanji: [{ character: '今', jlpt: 5, known: true }],
+      needs_furigana: true,
+    });
+    const { paragraphs } = mapApiParagraphsToReadingText([paragraph([t])]);
+    expect(paragraphs[0][0].segments).toBeUndefined();
+  });
+
   it('shows a known kanji word as peekable ruby (reading set, unknown falsy)', () => {
     const t = token({
       id: 'c',

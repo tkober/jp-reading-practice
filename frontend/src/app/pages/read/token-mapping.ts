@@ -16,6 +16,8 @@ import type { ApiParagraph, ApiToken } from '../../core/api.types';
  *   `reading` set, `unknown: true`.
  * - A kanji word that does *not* need furigana (known, or every kanji
  *   composes) -> peekable ruby: `reading` set, `unknown` left `false`.
+ * - A word whose `segments` split it into kanji and kana runs passes them
+ *   on, so the ruby sits over each kanji run only, not over okurigana.
  * - `is_word === false` (particles, auxiliaries, punctuation) -> `plain`:
  *   ordinary running text, not focusable or tappable, never peeked
  *   (sumi-ui#112).
@@ -51,6 +53,13 @@ function mapToken(token: ApiToken): SumiReadingWord {
     return word;
   }
   word.reading = token.reading;
+  // Ruby over the kanji runs only (飲/の + み), never over the okurigana.
+  // A single segment is the whole word, which `reading` already covers.
+  if (token.segments.length > 1) {
+    word.segments = token.segments.map((segment) =>
+      segment.reading ? { base: segment.base, reading: segment.reading } : { base: segment.base },
+    );
+  }
   if (token.needs_furigana) {
     word.unknown = true;
   }
