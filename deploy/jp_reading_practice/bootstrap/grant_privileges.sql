@@ -7,6 +7,10 @@
 -- jp_reading_practice_owner. The app role never runs DDL — its access to
 -- those tables comes from the default privileges below, so the backend
 -- issues no GRANT.
+--
+-- Default privileges only cover tables created after them. The GRANT ... ON
+-- ALL lines at the end cover tables that already exist, so running this after
+-- the backend's first start (or running it again) also works.
 
 ALTER SCHEMA public OWNER TO jp_reading_practice_owner;
 
@@ -25,4 +29,12 @@ ALTER DEFAULT PRIVILEGES
   IN SCHEMA public
   GRANT USAGE, SELECT, UPDATE
   ON SEQUENCES
+  TO jp_reading_practice_app;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON ALL TABLES IN SCHEMA public
+  TO jp_reading_practice_app;
+
+GRANT USAGE, SELECT, UPDATE
+  ON ALL SEQUENCES IN SCHEMA public
   TO jp_reading_practice_app;
