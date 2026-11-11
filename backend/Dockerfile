@@ -11,8 +11,10 @@
 # the script caches alongside it, and never a second copy of the main
 # dependency set, which this script does not need (it uses only the standard
 # library). This is also the one step in the whole build that needs network
-# access beyond PyPI -- EDRDG's own FTP mirror.
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS jmdict-builder
+# access beyond PyPI -- EDRDG's own FTP mirror. The output is a plain SQLite
+# file, so the stage runs natively on the CI runner ($BUILDPLATFORM) instead of
+# under QEMU for the arm64 image.
+FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS jmdict-builder
 WORKDIR /build
 COPY backend/scripts/build_jmdict.py ./scripts/build_jmdict.py
 RUN python3 scripts/build_jmdict.py

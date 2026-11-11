@@ -45,6 +45,10 @@ jobs:
         with:
           submodules: true
 
+      # QEMU lets buildx produce the arm64 variant on this amd64 runner (Apple
+      # Silicon Macs, issue tkober/compose-stacks-unraid#19).
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       # Skipped on a PR: it carries no credentials to push with, and GHCR
@@ -71,6 +75,7 @@ jobs:
           # The frontend builds from its own directory — unlike the backend,
           # nothing outside it is copied in.
           context: ./frontend
+          platforms: linux/amd64,linux/arm64
           # Build-only on a PR, so a broken Dockerfile shows up in the PR
           # instead of only failing once it reaches main.
           push: ${{ github.event_name != 'pull_request' }}
